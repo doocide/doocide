@@ -1,0 +1,194 @@
+{
+  "doocide": 1,
+  "kind": "decision",
+  "enc": "none",
+  "data": {
+    "id": "demoSummer",
+    "title": "Where should we go this summer?",
+    "description": "A family trip. Three options, five things that matter.",
+    "lang": "en",
+    "createdAt": "2026-10-20T00:00:00.000Z",
+    "updatedAt": "2026-10-20T00:00:00.000Z",
+    "settings": {
+      "mode": "weighted",
+      "scaleMax": 10,
+      "pughSteps": 1
+    },
+    "options": [
+      {
+        "id": "mtn",
+        "name": "Mountain cabin"
+      },
+      {
+        "id": "sea",
+        "name": "Seaside town"
+      },
+      {
+        "id": "city",
+        "name": "City break"
+      }
+    ],
+    "factors": [
+      {
+        "id": "cost",
+        "name": "Cost",
+        "weight": 5,
+        "guide": "Higher = cheaper for the whole trip."
+      },
+      {
+        "id": "rest",
+        "name": "Rest and quiet",
+        "weight": 4
+      },
+      {
+        "id": "todo",
+        "name": "Things to do",
+        "weight": 3
+      },
+      {
+        "id": "travel",
+        "name": "Travel time",
+        "weight": 3,
+        "guide": "Higher = shorter trip there."
+      },
+      {
+        "id": "kids",
+        "name": "Fun for the kids",
+        "weight": 2
+      }
+    ],
+    "facts": [
+      {
+        "optionId": "mtn",
+        "factorId": "cost",
+        "text": "€1,200 for 7 nights"
+      },
+      {
+        "optionId": "sea",
+        "factorId": "cost",
+        "text": "€1,650 for 7 nights"
+      },
+      {
+        "optionId": "city",
+        "factorId": "cost",
+        "text": "€2,100 for 5 nights"
+      },
+      {
+        "optionId": "mtn",
+        "factorId": "travel",
+        "text": "4 h drive"
+      },
+      {
+        "optionId": "sea",
+        "factorId": "travel",
+        "text": "6 h drive"
+      },
+      {
+        "optionId": "city",
+        "factorId": "travel",
+        "text": "2 h train"
+      },
+      {
+        "optionId": "city",
+        "factorId": "todo",
+        "text": "Museums, food tours, a concert"
+      }
+    ],
+    "scores": [
+      {
+        "optionId": "mtn",
+        "factorId": "cost",
+        "value": 8
+      },
+      {
+        "optionId": "mtn",
+        "factorId": "rest",
+        "value": 9
+      },
+      {
+        "optionId": "mtn",
+        "factorId": "todo",
+        "value": 5
+      },
+      {
+        "optionId": "mtn",
+        "factorId": "travel",
+        "value": 6
+      },
+      {
+        "optionId": "mtn",
+        "factorId": "kids",
+        "value": 7
+      },
+      {
+        "optionId": "sea",
+        "factorId": "cost",
+        "value": 6
+      },
+      {
+        "optionId": "sea",
+        "factorId": "rest",
+        "value": 7
+      },
+      {
+        "optionId": "sea",
+        "factorId": "todo",
+        "value": 7
+      },
+      {
+        "optionId": "sea",
+        "factorId": "travel",
+        "value": 5
+      },
+      {
+        "optionId": "sea",
+        "factorId": "kids",
+        "value": 9
+      },
+      {
+        "optionId": "city",
+        "factorId": "cost",
+        "value": 4
+      },
+      {
+        "optionId": "city",
+        "factorId": "rest",
+        "value": 3
+      },
+      {
+        "optionId": "city",
+        "factorId": "todo",
+        "value": 10
+      },
+      {
+        "optionId": "city",
+        "factorId": "travel",
+        "value": 8
+      },
+      {
+        "optionId": "city",
+        "factorId": "kids",
+        "value": 5
+      }
+    ],
+    "pugh": [],
+    "notes": [
+      {
+        "id": "n1",
+        "optionId": "mtn",
+        "factorId": "rest",
+        "text": "No phone signal at the cabin. That's the point.",
+        "visibility": "shared",
+        "createdAt": "2026-10-20T00:00:00.000Z"
+      },
+      {
+        "id": "n2",
+        "optionId": "sea",
+        "factorId": "kids",
+        "text": "The kids voted for the beach. Loudly.",
+        "visibility": "shared",
+        "createdAt": "2026-10-20T00:00:00.000Z"
+      }
+    ]
+  }
+}

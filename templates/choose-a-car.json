@@ -1,0 +1,79 @@
+{
+  "doocide": 1,
+  "kind": "template",
+  "enc": "none",
+  "data": {
+    "id": "tpl-choose-a-car",
+    "title": "Choose a car to buy",
+    "lang": "en",
+    "createdAt": "2026-10-19T00:00:00.000Z",
+    "updatedAt": "2026-10-19T00:00:00.000Z",
+    "settings": {
+      "mode": "weighted",
+      "scaleMax": 10,
+      "pughSteps": 1
+    },
+    "options": [
+      {
+        "id": "o01",
+        "name": "Car A"
+      },
+      {
+        "id": "o02",
+        "name": "Car B"
+      },
+      {
+        "id": "o03",
+        "name": "Car C"
+      }
+    ],
+    "factors": [
+      {
+        "id": "f01",
+        "name": "Price",
+        "weight": 5,
+        "guide": "Higher = cheaper for what you get."
+      },
+      {
+        "id": "f02",
+        "name": "Safety",
+        "weight": 5
+      },
+      {
+        "id": "f03",
+        "name": "Reliability",
+        "weight": 4
+      },
+      {
+        "id": "f04",
+        "name": "Running costs",
+        "weight": 4,
+        "guide": "Fuel or charging, insurance, maintenance. Higher = cheaper."
+      },
+      {
+        "id": "f05",
+        "name": "Comfort",
+        "weight": 3
+      },
+      {
+        "id": "f06",
+        "name": "Space",
+        "weight": 3
+      },
+      {
+        "id": "f07",
+        "name": "Resale value",
+        "weight": 2
+      },
+      {
+        "id": "f08",
+        "name": "Looks",
+        "weight": 2
+      }
+    ],
+    "facts": [],
+    "scores": [],
+    "pugh": [],
+    "notes": []
+  }
+}

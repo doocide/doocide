@@ -1,0 +1,121 @@
+// Links: https://<app>/#d=<base64url(deflate-raw(JSON envelope))>
+// The data sits after "#", which browsers never send to the server.
+
+import { LIMITS } from './limits';
+import { assertShareable } from './share';
+import type { Envelope } from './types';
+import { FormatError, parseEnvelopeText } from './validate';
+
+export const LINK_KEY = 'd';
+export const TEMPLATE_KEY = 't';
+
+const B64URL = /^[A-Za-z0-9_-]*$/;
+
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function fromBase64Url(text: string): Uint8Array {
+  if (!B64URL.test(text)) throw new FormatError('bad-data');
+  const b64 = text.replace(/-/g, '+').replace(/_/g, '/');
+  let binary: string;
+  try {
+    binary = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+  } catch {
+    throw new FormatError('bad-data');
+  }
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
+async function deflate(bytes: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/** Inflates, stopping as soon as the output passes `max` bytes (zip-bomb guard). */
+export async function inflateCapped(bytes: Uint8Array, max: number): Promise<Uint8Array> {
+  const reader = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.length;
+      if (total > max) {
+        await reader.cancel().catch(() => {});
+        throw new FormatError('too-big');
+      }
+      chunks.push(value);
+    }
+  } catch (err) {
+    if (err instanceof FormatError) throw err;
+    throw new FormatError('bad-data');
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.length;
+  }
+  return out;
+}
+
+/** The app address with no query and no fragment, so nothing but "#d=" ever carries data. */
+export function appBase(href: string): string {
+  const url = new URL(href);
+  url.search = '';
+  url.hash = '';
+  return url.href;
+}
+
+export async function encodePayload(env: Envelope): Promise<string> {
+  assertShareable(env);
+  const json = JSON.stringify(env);
+  return toBase64Url(await deflate(new TextEncoder().encode(json)));
+}
+
+export async function makeLink(env: Envelope, href: string): Promise<string> {
+  return `${appBase(href)}#${LINK_KEY}=${await encodePayload(env)}`;
+}
+
+export async function decodePayload(payload: string): Promise<Envelope> {
+  if (payload.length > LIMITS.linkChars) throw new FormatError('too-big');
+  const bytes = await inflateCapped(fromBase64Url(payload), LIMITS.unpackedBytes);
+  let text: string;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw new FormatError('bad-data');
+  }
+  const env = parseEnvelopeText(text);
+  // A link is always someone else's share; it can never install a backup.
+  if (env.kind === 'backup') throw new FormatError('invalid', 'Backups cannot travel in links');
+  return env;
+}
+
+export type FragmentRequest =
+  | { type: 'none' }
+  | { type: 'data'; payload: string }
+  | { type: 'template'; name: string }
+  | { type: 'unknown' };
+
+const TEMPLATE_NAME = /^[a-z0-9-]{1,64}$/;
+
+/** Reads "#d=..." or "#t=name". Fragments carry data only, never commands. */
+export function readFragment(hash: string): FragmentRequest {
+  const h = hash.startsWith('#') ? hash.slice(1) : hash;
+  if (!h) return { type: 'none' };
+  const eq = h.indexOf('=');
+  if (eq < 0) return { type: 'unknown' };
+  const key = h.slice(0, eq);
+  const value = h.slice(eq + 1);
+  if (key === LINK_KEY) return { type: 'data', payload: value };
+  if (key === TEMPLATE_KEY && TEMPLATE_NAME.test(value)) return { type: 'template', name: value };
+  return { type: 'unknown' };
+}

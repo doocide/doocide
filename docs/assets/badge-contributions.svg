@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="143" height="20" viewBox="0 0 143 20" role="img" aria-label="contributions welcome">
+  <rect width="143" height="20" rx="10" fill="#f4cccc"/>
+  <circle cx="11" cy="10" r="3" fill="#cc0000"/>
+  <text x="19" y="10.5" dominant-baseline="central" font-family="system-ui, sans-serif" font-size="10.5" font-weight="400" fill="#85200c" textLength="116" lengthAdjust="spacingAndGlyphs">contributions welcome</text>
+</svg>

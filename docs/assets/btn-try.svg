@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="103" height="30" viewBox="0 0 206 60" role="img" aria-label="Try it now">
+  <rect x="0" y="4" width="206" height="56" rx="28" fill="#1c4587"/>
+  <rect x="0" y="0" width="206" height="56" rx="28" fill="#3c78d8"/>
+  <path d="M28 16.5v23l18-11.5z" fill="#ffffff"/>
+  <text x="58" y="28" dominant-baseline="central" font-family="system-ui, sans-serif" font-size="22" font-weight="800" fill="#ffffff" textLength="120" lengthAdjust="spacingAndGlyphs">Try it now</text>
+</svg>

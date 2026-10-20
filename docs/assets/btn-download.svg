@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="159" height="30" viewBox="0 0 318 60" role="img" aria-label="Download for offline">
+  <rect x="0" y="4" width="318" height="56" rx="28" fill="#bf9000"/>
+  <rect x="0" y="0" width="318" height="56" rx="28" fill="#f1c232"/>
+  <path d="M34 17v14M27.5 25l6.5 6.5 6.5-6.5M24 38h20" fill="none" stroke="#3d3200" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="58" y="28" dominant-baseline="central" font-family="system-ui, sans-serif" font-size="22" font-weight="800" fill="#3d3200" textLength="230" lengthAdjust="spacingAndGlyphs">Download for offline</text>
+</svg>

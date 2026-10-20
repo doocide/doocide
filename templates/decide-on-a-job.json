@@ -1,0 +1,77 @@
+{
+  "doocide": 1,
+  "kind": "template",
+  "enc": "none",
+  "data": {
+    "id": "tpl-decide-on-a-job",
+    "title": "Decide on a new job",
+    "lang": "en",
+    "createdAt": "2026-10-19T00:00:00.000Z",
+    "updatedAt": "2026-10-19T00:00:00.000Z",
+    "settings": {
+      "mode": "weighted",
+      "scaleMax": 10,
+      "pughSteps": 1
+    },
+    "options": [
+      {
+        "id": "o01",
+        "name": "Current job"
+      },
+      {
+        "id": "o02",
+        "name": "Offer A"
+      },
+      {
+        "id": "o03",
+        "name": "Offer B"
+      }
+    ],
+    "factors": [
+      {
+        "id": "f01",
+        "name": "Pay and benefits",
+        "weight": 5
+      },
+      {
+        "id": "f02",
+        "name": "The work itself",
+        "weight": 5
+      },
+      {
+        "id": "f03",
+        "name": "Manager and team",
+        "weight": 4
+      },
+      {
+        "id": "f04",
+        "name": "Room to grow",
+        "weight": 4
+      },
+      {
+        "id": "f05",
+        "name": "Work-life balance",
+        "weight": 4
+      },
+      {
+        "id": "f06",
+        "name": "Values fit",
+        "weight": 4
+      },
+      {
+        "id": "f07",
+        "name": "Commute or remote work",
+        "weight": 3
+      },
+      {
+        "id": "f08",
+        "name": "Stability",
+        "weight": 3
+      }
+    ],
+    "facts": [],
+    "scores": [],
+    "pugh": [],
+    "notes": []
+  }
+}

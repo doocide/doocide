@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="131" height="30" viewBox="0 0 262 60" role="img" aria-label="See an example">
+  <rect x="0" y="4" width="262" height="56" rx="28" fill="#274e13"/>
+  <rect x="0" y="0" width="262" height="56" rx="28" fill="#38761d"/>
+  <path d="M22 28s4.3-8.4 12-8.4 12 8.4 12 8.4-4.3 8.4-12 8.4S22 28 22 28z" fill="none" stroke="#ffffff" stroke-width="2.8" stroke-linejoin="round"/>
+  <circle cx="34" cy="28" r="3.8" fill="#ffffff"/>
+  <text x="58" y="28" dominant-baseline="central" font-family="system-ui, sans-serif" font-size="22" font-weight="800" fill="#ffffff" textLength="174" lengthAdjust="spacingAndGlyphs">See an example</text>
+</svg>

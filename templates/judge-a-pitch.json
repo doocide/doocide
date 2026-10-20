@@ -1,0 +1,65 @@
+{
+  "doocide": 1,
+  "kind": "template",
+  "enc": "none",
+  "data": {
+    "id": "tpl-judge-a-pitch",
+    "title": "Judge a pitch competition",
+    "description": "For pitch competitions, hackathons and demo days. Each judge scores the teams; share as a template so every judge uses the same factors.",
+    "lang": "en",
+    "createdAt": "2026-10-19T00:00:00.000Z",
+    "updatedAt": "2026-10-19T00:00:00.000Z",
+    "settings": {
+      "mode": "weighted",
+      "scaleMax": 10,
+      "pughSteps": 1
+    },
+    "options": [
+      {
+        "id": "o01",
+        "name": "Team 1"
+      },
+      {
+        "id": "o02",
+        "name": "Team 2"
+      },
+      {
+        "id": "o03",
+        "name": "Team 3"
+      }
+    ],
+    "factors": [
+      {
+        "id": "f01",
+        "name": "Revenue model",
+        "weight": 5,
+        "guide": "0 = no idea how it makes money, 10 = clear and tested."
+      },
+      {
+        "id": "f02",
+        "name": "Team structure",
+        "weight": 5,
+        "guide": "0 = key skills missing, 10 = the team can build and sell it."
+      },
+      {
+        "id": "f03",
+        "name": "Market size",
+        "weight": 4
+      },
+      {
+        "id": "f04",
+        "name": "Would I invest?",
+        "weight": 4
+      },
+      {
+        "id": "f05",
+        "name": "Presentation / demo",
+        "weight": 2
+      }
+    ],
+    "facts": [],
+    "scores": [],
+    "pugh": [],
+    "notes": []
+  }
+}

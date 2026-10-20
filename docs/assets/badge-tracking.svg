@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="88" height="20" viewBox="0 0 88 20" role="img" aria-label="no tracking">
+  <rect width="88" height="20" rx="10" fill="#d9ead3"/>
+  <circle cx="11" cy="10" r="3" fill="#38761d"/>
+  <text x="19" y="10.5" dominant-baseline="central" font-family="system-ui, sans-serif" font-size="10.5" font-weight="400" fill="#274e13" textLength="61" lengthAdjust="spacingAndGlyphs">no tracking</text>
+</svg>

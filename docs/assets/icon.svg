@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="Doocide">
+  <rect width="120" height="120" rx="28" fill="#23262d"/>
+  <g transform="translate(12 12) scale(0.8)">
+    <path d="M30 16v88M60 16v88M90 16v88" stroke="#ffffff" stroke-opacity="0.25" stroke-width="6" stroke-linecap="round"/>
+    <path d="M30 64L60 88L90 34" fill="none" stroke="#6ea2ff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="30" cy="64" r="10" fill="#ffffff"/>
+    <circle cx="60" cy="88" r="10" fill="#ffffff"/>
+    <circle cx="90" cy="34" r="16" fill="#40c057"/>
+    <path d="M83 34l5 5l9-10" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

@@ -1,0 +1,151 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://doocide.github.io/schema/doocide-v1.schema.json",
+  "title": "Doocide file, version 1",
+  "description": "A decision matrix (Pugh Matrix): options compared on weighted factors. Files use the .doocide extension and are plain JSON. To fill a template with an AI assistant: keep every id, add options and factors with new short ids, write evidence as facts, and leave scores to the person deciding.",
+  "type": "object",
+  "required": ["doocide", "kind", "data"],
+  "properties": {
+    "doocide": { "const": 1, "description": "Format version." },
+    "kind": {
+      "enum": ["decision", "template", "backup"],
+      "description": "decision: shared with scores. template: structure only, no scores or notes. backup: the owner's full copy, including private notes; never shared."
+    },
+    "enc": { "enum": ["none"], "description": "Encryption. Only 'none' in version 1." },
+    "data": { "$ref": "#/definitions/decision" }
+  },
+  "definitions": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+    "date": { "type": "string", "maxLength": 40, "description": "ISO 8601 date and time." },
+    "translations": {
+      "type": "object",
+      "description": "Optional translations keyed by language code, e.g. {\"ro\": {\"name\": \"Preț\"}}.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "maxLength": 200 },
+          "guide": { "type": "string", "maxLength": 1000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "cellRef": {
+      "type": "object",
+      "required": ["optionId", "factorId"],
+      "properties": {
+        "optionId": { "$ref": "#/definitions/id" },
+        "factorId": { "$ref": "#/definitions/id" }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "required": ["title", "options", "factors"],
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "lang": { "type": "string", "maxLength": 35, "description": "Language of the content (BCP 47), e.g. en, ro, pt-BR." },
+        "createdAt": { "$ref": "#/definitions/date" },
+        "updatedAt": { "$ref": "#/definitions/date" },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "mode": { "enum": ["weighted", "pugh"], "description": "weighted: score each option 0..scaleMax. pugh: rate each option against a baseline option." },
+            "scaleMax": { "enum": [5, 10, 100] },
+            "pughSteps": { "enum": [1, 2], "description": "1: ratings -1, 0, +1. 2: ratings -2 to +2." },
+            "baselineId": { "$ref": "#/definitions/id" }
+          },
+          "additionalProperties": false
+        },
+        "options": {
+          "type": "array",
+          "maxItems": 100,
+          "description": "The choices being compared.",
+          "items": {
+            "type": "object",
+            "required": ["id", "name"],
+            "properties": {
+              "id": { "$ref": "#/definitions/id" },
+              "name": { "type": "string", "maxLength": 200 },
+              "description": { "type": "string", "maxLength": 2000 },
+              "l10n": { "$ref": "#/definitions/translations" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "factors": {
+          "type": "array",
+          "maxItems": 300,
+          "description": "What matters in the decision.",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "weight"],
+            "properties": {
+              "id": { "$ref": "#/definitions/id" },
+              "name": { "type": "string", "maxLength": 200 },
+              "weight": { "type": "integer", "minimum": 1, "maximum": 5, "description": "1 least important, 3 important, 5 very important." },
+              "guide": { "type": "string", "maxLength": 1000, "description": "What a low and a high score mean. Higher must always mean better." },
+              "l10n": { "$ref": "#/definitions/translations" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "facts": {
+          "type": "array",
+          "maxItems": 10000,
+          "description": "Evidence for one option on one factor. Always shared.",
+          "items": {
+            "allOf": [{ "$ref": "#/definitions/cellRef" }],
+            "properties": {
+              "optionId": true,
+              "factorId": true,
+              "text": { "type": "string", "maxLength": 1000 },
+              "url": { "type": "string", "maxLength": 2000, "pattern": "^https?://" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "scores": {
+          "type": "array",
+          "maxItems": 30000,
+          "description": "Weighted-mode scores, 0..scaleMax.",
+          "items": {
+            "allOf": [{ "$ref": "#/definitions/cellRef" }],
+            "required": ["value"],
+            "properties": { "optionId": true, "factorId": true, "value": { "type": "number" } },
+            "additionalProperties": false
+          }
+        },
+        "pugh": {
+          "type": "array",
+          "maxItems": 30000,
+          "description": "Pugh-mode ratings against the baseline, -pughSteps..pughSteps.",
+          "items": {
+            "allOf": [{ "$ref": "#/definitions/cellRef" }],
+            "required": ["value"],
+            "properties": { "optionId": true, "factorId": true, "value": { "type": "integer" } },
+            "additionalProperties": false
+          }
+        },
+        "notes": {
+          "type": "array",
+          "maxItems": 5000,
+          "items": {
+            "type": "object",
+            "required": ["id", "text", "visibility"],
+            "properties": {
+              "id": { "$ref": "#/definitions/id" },
+              "optionId": { "$ref": "#/definitions/id" },
+              "factorId": { "$ref": "#/definitions/id" },
+              "text": { "type": "string", "maxLength": 4000 },
+              "visibility": { "enum": ["private", "shared"], "description": "Private notes appear only in backups, never in shared files or links." },
+              "author": { "type": "string", "maxLength": 80, "description": "Self-declared, never verified." },
+              "createdAt": { "$ref": "#/definitions/date" }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "doocide": 1,
+  "kind": "template",
+  "enc": "none",
+  "data": {
+    "id": "tpl-compare-design-concepts",
+    "title": "Compare design concepts (classic Pugh)",
+    "description": "The original Pugh method: pick the current design as the baseline and rate each new concept better (+), the same (S) or worse (−) on every criterion.",
+    "lang": "en",
+    "createdAt": "2026-10-19T00:00:00.000Z",
+    "updatedAt": "2026-10-19T00:00:00.000Z",
+    "settings": {
+      "mode": "pugh",
+      "scaleMax": 10,
+      "pughSteps": 1,
+      "baselineId": "o01"
+    },
+    "options": [
+      {
+        "id": "o01",
+        "name": "Current design"
+      },
+      {
+        "id": "o02",
+        "name": "Concept A"
+      },
+      {
+        "id": "o03",
+        "name": "Concept B"
+      },
+      {
+        "id": "o04",
+        "name": "Concept C"
+      }
+    ],
+    "factors": [
+      {
+        "id": "f01",
+        "name": "Cost",
+        "weight": 5
+      },
+      {
+        "id": "f02",
+        "name": "Ease of use",
+        "weight": 4
+      },
+      {
+        "id": "f03",
+        "name": "Reliability",
+        "weight": 4
+      },
+      {
+        "id": "f04",
+        "name": "Weight",
+        "weight": 3
+      },
+      {
+        "id": "f05",
+        "name": "Ease of manufacture",
+        "weight": 3
+      },
+      {
+        "id": "f06",
+        "name": "Maintenance",
+        "weight": 2
+      }
+    ],
+    "facts": [],
+    "scores": [],
+    "pugh": [],
+    "notes": []
+  }
+}

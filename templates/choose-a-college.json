@@ -1,0 +1,73 @@
+{
+  "doocide": 1,
+  "kind": "template",
+  "enc": "none",
+  "data": {
+    "id": "tpl-choose-a-college",
+    "title": "Choose a college",
+    "lang": "en",
+    "createdAt": "2026-10-19T00:00:00.000Z",
+    "updatedAt": "2026-10-19T00:00:00.000Z",
+    "settings": {
+      "mode": "weighted",
+      "scaleMax": 10,
+      "pughSteps": 1
+    },
+    "options": [
+      {
+        "id": "o01",
+        "name": "College A"
+      },
+      {
+        "id": "o02",
+        "name": "College B"
+      },
+      {
+        "id": "o03",
+        "name": "College C"
+      }
+    ],
+    "factors": [
+      {
+        "id": "f01",
+        "name": "Programs that fit you",
+        "weight": 5
+      },
+      {
+        "id": "f02",
+        "name": "Cost after aid",
+        "weight": 5,
+        "guide": "Higher = cheaper."
+      },
+      {
+        "id": "f03",
+        "name": "Career outcomes",
+        "weight": 4
+      },
+      {
+        "id": "f04",
+        "name": "Teaching quality",
+        "weight": 4
+      },
+      {
+        "id": "f05",
+        "name": "Campus life",
+        "weight": 3
+      },
+      {
+        "id": "f06",
+        "name": "Location",
+        "weight": 3
+      },
+      {
+        "id": "f07",
+        "name": "Size",
+        "weight": 2
+      }
+    ],
+    "facts": [],
+    "scores": [],
+    "pugh": [],
+    "notes": []
+  }
+}

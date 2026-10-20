@@ -1,0 +1,13 @@
+# Private reference material (old decks, notes) — never commit
+sandbox/
+
+# Local Claude Code settings (machine-specific)
+.claude/settings.local.json
+
+# Build output and dependencies
+node_modules/
+dist/
+dist-offline/
+
+# Operating system metadata
+.DS_Store

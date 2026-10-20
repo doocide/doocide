@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="200" viewBox="0 0 800 200" role="img" aria-label="How it works: 1. Pick a tough decision. 2. Set up your options and factors. 3. Compare and reveal the winner!" font-family="system-ui, sans-serif">
+  <g transform="translate(8 8)">
+    <rect width="232" height="184" rx="18" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+    <circle cx="38" cy="40" r="18" fill="#3c78d8"/>
+    <text x="38" y="41" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="800" fill="#ffffff">1</text>
+    <g transform="translate(168 20)"><path d="M20 38V24M20 24L10 13M20 24L30 13" fill="none" stroke="#3c78d8" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="9" cy="10" r="4.5" fill="#3c78d8"/><circle cx="31" cy="10" r="4.5" fill="#3c78d8"/></g>
+    <text x="24" y="98" font-size="17" font-weight="800" fill="#1f2328">Pick a tough</text>
+    <text x="24" y="121" font-size="17" font-weight="800" fill="#1f2328">decision.</text>
+    <text x="24" y="156" font-size="13" font-weight="500" fill="#59636e">two or more options</text>
+  </g>
+  <g transform="translate(284 8)">
+    <rect width="232" height="184" rx="18" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+    <circle cx="38" cy="40" r="18" fill="#38761d"/>
+    <text x="38" y="41" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="800" fill="#ffffff">2</text>
+    <g transform="translate(168 20)"><path d="M9 5v30M20 5v30M31 5v30" stroke="#c4c4c4" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="9" cy="20" r="4.5" fill="#38761d"/><circle cx="20" cy="29" r="4.5" fill="#38761d"/><circle cx="31" cy="11" r="4.5" fill="#38761d"/></g>
+    <text x="24" y="98" font-size="17" font-weight="800" fill="#1f2328">Set up your options</text>
+    <text x="24" y="121" font-size="17" font-weight="800" fill="#1f2328">and factors.</text>
+    <text x="24" y="156" font-size="13" font-weight="500" fill="#59636e">weigh what matters, then score</text>
+  </g>
+  <g transform="translate(560 8)">
+    <rect width="232" height="184" rx="18" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+    <circle cx="38" cy="40" r="18" fill="#f1c232"/>
+    <text x="38" y="41" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="800" fill="#3d3200">3</text>
+    <g transform="translate(168 20)"><circle cx="20" cy="20" r="16" fill="#40c057"/>
+      <path d="M12.5 20.5l5 5l10-11" fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <text x="24" y="98" font-size="17" font-weight="800" fill="#1f2328">Compare and reveal</text>
+    <text x="24" y="121" font-size="17" font-weight="800" fill="#1f2328">the winner!</text>
+    <text x="24" y="156" font-size="13" font-weight="500" fill="#59636e">and see how solid it is</text>
+  </g>
+  <path d="M257 88l9 12l-9 12" fill="none" stroke="#8c959f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M533 88l9 12l-9 12" fill="none" stroke="#8c959f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

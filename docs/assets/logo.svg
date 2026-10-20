@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="Doocide">
+  <path d="M30 16v88M60 16v88M90 16v88" stroke="#d9d9d9" stroke-width="6" stroke-linecap="round"/>
+  <path d="M30 64L60 88L90 34" fill="none" stroke="#3c78d8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="30" cy="64" r="10" fill="#ffffff" stroke="#3c78d8" stroke-width="5"/>
+  <circle cx="60" cy="88" r="10" fill="#ffffff" stroke="#3c78d8" stroke-width="5"/>
+  <circle cx="90" cy="34" r="15" fill="#40c057"/>
+  <path d="M83 34l5 5l9-10" fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

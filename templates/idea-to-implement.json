@@ -1,0 +1,344 @@
+{
+  "doocide": 1,
+  "kind": "template",
+  "enc": "none",
+  "data": {
+    "id": "tpl-idea-to-implement",
+    "title": "Idea to implement",
+    "description": "Compare ideas before you commit to one. Score each idea so that higher always means better (lower risk, lower cost, more appeal).",
+    "lang": "en",
+    "createdAt": "2026-10-19T00:00:00.000Z",
+    "updatedAt": "2026-10-19T00:00:00.000Z",
+    "settings": {
+      "mode": "weighted",
+      "scaleMax": 10,
+      "pughSteps": 1
+    },
+    "options": [
+      {
+        "id": "o01",
+        "name": "Idea 1"
+      },
+      {
+        "id": "o02",
+        "name": "Idea 2"
+      },
+      {
+        "id": "o03",
+        "name": "Idea 3"
+      }
+    ],
+    "factors": [
+      {
+        "id": "f01",
+        "name": "Implementation feasibility",
+        "weight": 5
+      },
+      {
+        "id": "f02",
+        "name": "Intellectual property",
+        "weight": 5
+      },
+      {
+        "id": "f03",
+        "name": "Long-range benefits",
+        "weight": 5
+      },
+      {
+        "id": "f04",
+        "name": "Real need? Solves problems?",
+        "weight": 5
+      },
+      {
+        "id": "f05",
+        "name": "Advertising efforts",
+        "weight": 4,
+        "guide": "Higher = less advertising needed."
+      },
+      {
+        "id": "f06",
+        "name": "Competitors",
+        "weight": 4,
+        "guide": "Higher = weaker or fewer competitors."
+      },
+      {
+        "id": "f07",
+        "name": "Does it change anything?",
+        "weight": 4
+      },
+      {
+        "id": "f08",
+        "name": "Implementation costs",
+        "weight": 4,
+        "guide": "Higher = cheaper to implement."
+      },
+      {
+        "id": "f09",
+        "name": "Legal issues",
+        "weight": 4,
+        "guide": "Higher = fewer legal issues."
+      },
+      {
+        "id": "f10",
+        "name": "Market momentum",
+        "weight": 4
+      },
+      {
+        "id": "f11",
+        "name": "Market ready for it?",
+        "weight": 4
+      },
+      {
+        "id": "f12",
+        "name": "Revenue, margin",
+        "weight": 4
+      },
+      {
+        "id": "f13",
+        "name": "Team",
+        "weight": 4
+      },
+      {
+        "id": "f14",
+        "name": "Will customers buy it?",
+        "weight": 4
+      },
+      {
+        "id": "f15",
+        "name": "Any negative impact?",
+        "weight": 3,
+        "guide": "Higher = less negative impact."
+      },
+      {
+        "id": "f16",
+        "name": "Competitive pricing",
+        "weight": 3
+      },
+      {
+        "id": "f17",
+        "name": "Complete or partial solution?",
+        "weight": 3
+      },
+      {
+        "id": "f18",
+        "name": "Cost to market",
+        "weight": 3,
+        "guide": "Higher = cheaper."
+      },
+      {
+        "id": "f19",
+        "name": "Customer segments",
+        "weight": 3
+      },
+      {
+        "id": "f20",
+        "name": "Defined applicability",
+        "weight": 3
+      },
+      {
+        "id": "f21",
+        "name": "Environmental impact",
+        "weight": 3,
+        "guide": "Higher = better for the environment."
+      },
+      {
+        "id": "f22",
+        "name": "Execution complexity",
+        "weight": 3,
+        "guide": "Higher = simpler to execute."
+      },
+      {
+        "id": "f23",
+        "name": "Failure detection",
+        "weight": 3
+      },
+      {
+        "id": "f24",
+        "name": "Failure frequency",
+        "weight": 3,
+        "guide": "Higher = fails less often."
+      },
+      {
+        "id": "f25",
+        "name": "Failure risk",
+        "weight": 3,
+        "guide": "Higher = lower risk."
+      },
+      {
+        "id": "f26",
+        "name": "Faults or limitations",
+        "weight": 3,
+        "guide": "Higher = fewer limitations."
+      },
+      {
+        "id": "f27",
+        "name": "Funding chances",
+        "weight": 3
+      },
+      {
+        "id": "f28",
+        "name": "Funding needs",
+        "weight": 3,
+        "guide": "Higher = needs less funding."
+      },
+      {
+        "id": "f29",
+        "name": "How soon will it launch?",
+        "weight": 3,
+        "guide": "Higher = sooner."
+      },
+      {
+        "id": "f30",
+        "name": "Immediate gains or results",
+        "weight": 3
+      },
+      {
+        "id": "f31",
+        "name": "Media pick-up",
+        "weight": 3
+      },
+      {
+        "id": "f32",
+        "name": "Natural sales appeal",
+        "weight": 3
+      },
+      {
+        "id": "f33",
+        "name": "Originality, innovation",
+        "weight": 3
+      },
+      {
+        "id": "f34",
+        "name": "Pareto analysis lead ideas",
+        "weight": 3
+      },
+      {
+        "id": "f35",
+        "name": "Pivoting risk",
+        "weight": 3,
+        "guide": "Higher = lower risk."
+      },
+      {
+        "id": "f36",
+        "name": "Quality expectations",
+        "weight": 3
+      },
+      {
+        "id": "f37",
+        "name": "Risk factors",
+        "weight": 3,
+        "guide": "Higher = fewer risks."
+      },
+      {
+        "id": "f38",
+        "name": "Scalable?",
+        "weight": 3
+      },
+      {
+        "id": "f39",
+        "name": "Seasonal usage",
+        "weight": 3,
+        "guide": "Higher = less seasonal."
+      },
+      {
+        "id": "f40",
+        "name": "Special user instructions",
+        "weight": 3,
+        "guide": "Higher = fewer instructions needed."
+      },
+      {
+        "id": "f41",
+        "name": "Suppliers",
+        "weight": 3
+      },
+      {
+        "id": "f42",
+        "name": "Sustaining or disruptive?",
+        "weight": 3
+      },
+      {
+        "id": "f43",
+        "name": "SWOT: opportunities",
+        "weight": 3
+      },
+      {
+        "id": "f44",
+        "name": "SWOT: strengths",
+        "weight": 3
+      },
+      {
+        "id": "f45",
+        "name": "SWOT: threats",
+        "weight": 3,
+        "guide": "Higher = fewer threats."
+      },
+      {
+        "id": "f46",
+        "name": "SWOT: weaknesses",
+        "weight": 3,
+        "guide": "Higher = fewer weaknesses."
+      },
+      {
+        "id": "f47",
+        "name": "Time frame to implement",
+        "weight": 3,
+        "guide": "Higher = shorter."
+      },
+      {
+        "id": "f48",
+        "name": "Warranty",
+        "weight": 3
+      },
+      {
+        "id": "f49",
+        "name": "What's in it for me?",
+        "weight": 3
+      },
+      {
+        "id": "f50",
+        "name": "Wide social acceptance",
+        "weight": 3
+      },
+      {
+        "id": "f51",
+        "name": "Will I use it myself?",
+        "weight": 3
+      },
+      {
+        "id": "f52",
+        "name": "Buy or build?",
+        "weight": 2
+      },
+      {
+        "id": "f53",
+        "name": "Exit opportunity",
+        "weight": 2
+      },
+      {
+        "id": "f54",
+        "name": "Resources",
+        "weight": 2
+      },
+      {
+        "id": "f55",
+        "name": "User resistance",
+        "weight": 2,
+        "guide": "Higher = less resistance."
+      },
+      {
+        "id": "f56",
+        "name": "Variations of the idea",
+        "weight": 2
+      },
+      {
+        "id": "f57",
+        "name": "Subjective preference",
+        "weight": 1
+      }
+    ],
+    "facts": [],
+    "scores": [],
+    "pugh": [],
+    "notes": []
+  }
+}
