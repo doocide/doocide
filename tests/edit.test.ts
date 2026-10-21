@@ -7,6 +7,8 @@ import {
   removeOption,
   renameOption,
   setFact,
+  refreshFromInvite,
+  setRows,
   setScore,
   setSettings,
   setTitle,
@@ -67,5 +69,29 @@ describe('group locks', () => {
     const withBallot = addBallots(unsigned(ballotFrom(d, 'v1', 5)))(d);
     expect(setSettings({ scaleMax: 5 })(withBallot)).toBe(withBallot);
     expect(setSettings({ mode: 'pugh' })(withBallot)).toBe(withBallot);
+  });
+});
+
+describe('rows layout', () => {
+  it('switches between factors and options as rows, leaving the default out of the file', () => {
+    const d = sampleDecision();
+    const sideways = setRows('options')(d);
+    expect(sideways.settings.rows).toBe('options');
+    expect('rows' in setRows('factors')(sideways).settings).toBe(false);
+    expect(setRows('factors')(d)).toBe(d);
+  });
+
+  it("is a view choice: participants and decisions with ballots can still switch it", () => {
+    const p = participantCopy(groupDecision());
+    expect(setRows('options')(p).settings.rows).toBe('options');
+    const withBallot = addBallots(unsigned(ballotFrom(groupDecision(), 'v1', 5)))(groupDecision());
+    expect(setRows('options')(withBallot).settings.rows).toBe('options');
+  });
+
+  it("keeps a participant's layout when they open the organizer's invite again", () => {
+    const organizer = groupDecision();
+    const p = setRows('options')(participantCopy(organizer));
+    const invite = { decision: organizer, settings: organizer.group!.settings, inviteId: 'invite1' };
+    expect(refreshFromInvite(invite, false)(p).settings.rows).toBe('options');
   });
 });

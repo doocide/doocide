@@ -1,9 +1,11 @@
-// Desktop and tablet: the StudentGrader-style matrix. Factors as rows, options as columns,
-// factor names and option headers pinned while scrolling.
+// Desktop and tablet: the StudentGrader-style matrix, in either layout the decision asks for.
+// Factors as rows (the default): options are columns, each headed by its rank and three summary rows.
+// Options as rows: each option row starts with its rank, name and summaries; factors are columns,
+// headed by their name and importance. Headers stay pinned while scrolling either way.
 
-import { useMemo, type CSSProperties } from 'react';
+import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import { cellKey, cellValues, spreadLevel, type Results } from '../engine';
-import type { CellResult, Decision, WeightResult } from '../format/types';
+import type { CellResult, Decision, Fact, Factor, Option, WeightResult } from '../format/types';
 import { formatNumber, t } from '../i18n';
 import { PughInput, ScoreInput, formatValue, heat } from './controls';
 import { addFactor, addOption, renameFactor, renameOption, setRating, setScore, setWeight, tidyNames, type Edit, type Target } from './edit';
@@ -100,177 +102,306 @@ export function scoreLabel(d: Decision, results: Results, optionId: string): str
   return `${r.total > 0 ? '+' : ''}${formatNumber(r.total)}`;
 }
 
-export function Grid({ d, results, readOnly, uiLang, onEdit, onDetail, lock, group }: MatrixProps) {
-  const values = useMemo(() => cellValues(d), [d]);
-  const fixed = readOnly || Boolean(lock?.structure);
-  const facts = useMemo(() => new Map(d.facts.map((f) => [cellKey(f.optionId, f.factorId), f])), [d.facts]);
-  const notes = useMemo(() => noteCounts(d), [d]);
-  const pugh = d.settings.mode === 'pugh';
-  const scored = values.size > 0;
+/** Everything both layouts need, worked out once. */
+interface Ctx extends MatrixProps {
+  /** Names, options and factors can't change (read-only, or a participant's copy). */
+  fixed: boolean;
+  pugh: boolean;
+  scored: boolean;
+  values: Map<string, number>;
+  facts: Map<string, Fact>;
+  notes: Map<string, number>;
+}
 
+/** Rank, trophy and the three summary values of an option. */
+function optionSummary(c: Ctx, o: Option) {
+  const r = c.results.byOption.get(o.id);
+  const win = c.results.winnerId === o.id;
+  const baseline = c.pugh && c.d.settings.baselineId === o.id;
+  const { rows, fill } = summaryRows(c.d, c.results, o.id);
+  const rank = c.scored && r && !c.results.needsBaseline ? r.rank : '';
+  return { win, baseline, rows, rank, style: { '--fill': Math.max(0, Math.min(1, fill)) } as CSSProperties };
+}
+
+/** An option's name on its dark strip, with its details button. */
+function OptionStrip({ c, o }: { c: Ctx; o: Option }) {
+  const name = optionName(c.d, o, c.uiLang);
+  const count = c.notes.get(`${o.id} `) ?? 0;
   return (
-    <div className="grid-wrap">
-      <table className="grid">
-        <thead>
-          <tr>
-            <th className="col-factor corner" scope="col">
-              <div className="head-label">{t('grid.factors')}</div>
-            </th>
-            <th className="col-weight corner" scope="col">
-              <div className="head-label">{t('grid.importance')}</div>
-            </th>
-            {d.options.map((o) => {
-              const r = results.byOption.get(o.id);
-              const win = results.winnerId === o.id;
-              const baseline = pugh && d.settings.baselineId === o.id;
-              const name = optionName(d, o, uiLang);
-              const count = notes.get(`${o.id} `) ?? 0;
-              const { rows, fill } = summaryRows(d, results, o.id);
-              const ranked = scored && r && !results.needsBaseline;
-              return (
-                <th
-                  key={o.id}
-                  scope="col"
-                  className={['col-option', win ? 'win' : '', baseline ? 'baseline' : ''].join(' ')}
-                  style={{ '--fill': Math.max(0, Math.min(1, fill)) } as CSSProperties}
-                >
-                  <div className="opt-head">
-                    <div className="opt-big" title={win ? t('results.winner') : undefined}>
-                      {ranked ? r.rank : ''}
-                      {win && <Icon name="trophy" size={22} />}
-                    </div>
-                    <div className="opt-row row-blue">{rows[0]}</div>
-                    <div className="opt-row row-green">{rows[1]}</div>
-                    <div className="opt-row row-gold">{rows[2]}</div>
-                    <div className="opt-strip">
-                      <input
-                        className="opt-name"
-                        value={o.name}
-                        placeholder={name}
-                        dir="auto"
-                        lang={d.lang}
-                        maxLength={200}
-                        readOnly={fixed}
-                        aria-label={t('grid.optionName')}
-                        onChange={(e) => onEdit(renameOption(o.id, e.target.value))}
-                        onBlur={() => onEdit(tidyNames)}
-                      />
-                      <button className="icon-button small" onClick={() => onDetail({ optionId: o.id })} aria-label={t('grid.optionDetails', { name })}>
-                        <Icon name={count ? 'note' : 'more'} size={16} />
-                        {count > 0 && <span className="count">{count}</span>}
-                      </button>
-                    </div>
-                  </div>
-                </th>
-              );
-            })}
-            {!fixed && (
-              <th className="col-add" scope="col">
-                <button className="button ghost" onClick={() => onEdit(addOption(''))}>
-                  <Icon name="plus" size={18} />
-                  {t('grid.addOption')}
-                </button>
-              </th>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {d.factors.map((f) => {
-            const name = factorName(d, f, uiLang);
-            const guide = factorGuide(d, f, uiLang);
-            const count = notes.get(` ${f.id}`) ?? 0;
+    <div className="opt-strip">
+      <input
+        className="opt-name"
+        value={o.name}
+        placeholder={name}
+        dir="auto"
+        lang={c.d.lang}
+        maxLength={200}
+        readOnly={c.fixed}
+        aria-label={t('grid.optionName')}
+        onChange={(e) => c.onEdit(renameOption(o.id, e.target.value))}
+        onBlur={() => c.onEdit(tidyNames)}
+      />
+      <button className="icon-button small" onClick={() => c.onDetail({ optionId: o.id })} aria-label={t('grid.optionDetails', { name })}>
+        <Icon name={count ? 'note' : 'more'} size={16} />
+        {count > 0 && <span className="count">{count}</span>}
+      </button>
+    </div>
+  );
+}
+
+/** A factor's name with its details button, anything passed in, and its scoring guide underneath. */
+function FactorName({ c, f, children }: { c: Ctx; f: Factor; children?: ReactNode }) {
+  const name = factorName(c.d, f, c.uiLang);
+  const guide = factorGuide(c.d, f, c.uiLang);
+  const count = c.notes.get(` ${f.id}`) ?? 0;
+  return (
+    <>
+      <div className="factor-cell">
+        <input
+          className="name-input"
+          value={f.name}
+          placeholder={name}
+          dir="auto"
+          lang={c.d.lang}
+          maxLength={200}
+          readOnly={c.fixed}
+          aria-label={t('grid.factorName')}
+          onChange={(e) => c.onEdit(renameFactor(f.id, e.target.value))}
+          onBlur={() => c.onEdit(tidyNames)}
+        />
+        <button className="icon-button small" onClick={() => c.onDetail({ factorId: f.id })} aria-label={t('grid.factorDetails', { name })}>
+          <Icon name={count ? 'note' : 'more'} size={16} />
+          {count > 0 && <span className="count">{count}</span>}
+        </button>
+      </div>
+      {children}
+      {guide && (
+        <div className="guide" dir="auto" lang={c.d.lang}>
+          {guide}
+        </div>
+      )}
+    </>
+  );
+}
+
+function Importance({ c, f }: { c: Ctx; f: Factor }) {
+  return (
+    <>
+      <Stars
+        value={Math.round(f.weight)}
+        readOnly={c.readOnly || Boolean(c.lock?.weights)}
+        label={t('grid.importanceOf', { name: factorName(c.d, f, c.uiLang) })}
+        onChange={(w) => c.onEdit(setWeight(f.id, w))}
+      />
+      {c.group?.weights?.has(f.id) && <div className="muted small">{t('group.weightAverage', { value: formatNumber(f.weight, 1) })}</div>}
+    </>
+  );
+}
+
+/** One option on one factor: the score (or the group's value), its fact, and the details button. */
+function Cell({ c, o, f }: { c: Ctx; o: Option; f: Factor }) {
+  const { d, results, readOnly, group, pugh } = c;
+  const key = cellKey(o.id, f.id);
+  const value = c.values.get(key);
+  const fact = c.facts.get(key);
+  const cellNotes = c.notes.get(key) ?? 0;
+  const baseline = pugh && d.settings.baselineId === o.id;
+  const label = t('grid.cellLabel', { option: optionName(d, o, c.uiLang), factor: factorName(d, f, c.uiLang) });
+  const h = heat(d, value);
+  const groupCell = group?.cells.get(key);
+  return (
+    <td
+      className={[
+        'cell',
+        value !== undefined ? 'scored' : '',
+        baseline ? 'baseline' : '',
+        results.winnerId === o.id ? 'win' : '',
+        h < 0 ? 'neg' : '',
+        groupCell && groupCell.n > 1 ? `split-${spreadLevel(groupCell.spread)}` : '',
+      ].join(' ')}
+      style={{ '--heat': Math.abs(h) } as CSSProperties}
+    >
+      {baseline ? (
+        <span className="muted small">{t('pugh.baselineCell')}</span>
+      ) : group ? (
+        <GroupValue d={d} cell={groupCell} />
+      ) : pugh ? (
+        <PughInput d={d} value={value} readOnly={readOnly} label={label} onChange={(v) => c.onEdit(setRating(o.id, f.id, v))} />
+      ) : (
+        <ScoreInput d={d} value={value} readOnly={readOnly} label={label} onChange={(v) => c.onEdit(setScore(o.id, f.id, v))} />
+      )}
+      {fact && (
+        <div className="fact" dir="auto" lang={d.lang}>
+          {fact.text}
+          {fact.url && <ExternalLink url={fact.url} />}
+        </div>
+      )}
+      <button className="cell-more" onClick={() => c.onDetail({ optionId: o.id, factorId: f.id })} aria-label={t('grid.cellDetails', { name: label })}>
+        <Icon name={cellNotes ? 'note' : 'more'} size={14} />
+        {cellNotes > 0 && <span className="count">{cellNotes}</span>}
+      </button>
+    </td>
+  );
+}
+
+function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button className="button ghost" onClick={onClick}>
+      <Icon name="plus" size={18} />
+      {label}
+    </button>
+  );
+}
+
+/** Factors as rows, options as columns: the StudentGrader layout. */
+function FactorRows({ c }: { c: Ctx }) {
+  const { d } = c;
+  return (
+    <table className="grid">
+      <thead>
+        <tr>
+          <th className="col-factor corner" scope="col">
+            <div className="head-label">{t('grid.factors')}</div>
+          </th>
+          <th className="col-weight corner" scope="col">
+            <div className="head-label">{t('grid.importance')}</div>
+          </th>
+          {d.options.map((o) => {
+            const s = optionSummary(c, o);
             return (
-              <tr key={f.id}>
-                <th scope="row" className="col-factor">
-                  <div className="factor-cell">
-                    <input
-                      className="name-input"
-                      value={f.name}
-                      placeholder={name}
-                      dir="auto"
-                      lang={d.lang}
-                      maxLength={200}
-                      readOnly={fixed}
-                      aria-label={t('grid.factorName')}
-                      onChange={(e) => onEdit(renameFactor(f.id, e.target.value))}
-                      onBlur={() => onEdit(tidyNames)}
-                    />
-                    <button className="icon-button small" onClick={() => onDetail({ factorId: f.id })} aria-label={t('grid.factorDetails', { name })}>
-                      <Icon name={count ? 'note' : 'more'} size={16} />
-                      {count > 0 && <span className="count">{count}</span>}
-                    </button>
+              <th key={o.id} scope="col" className={['col-option', s.win ? 'win' : '', s.baseline ? 'baseline' : ''].join(' ')} style={s.style}>
+                <div className="opt-head">
+                  <div className="opt-big" title={s.win ? t('results.winner') : undefined}>
+                    {s.rank}
+                    {s.win && <Icon name="trophy" size={22} />}
                   </div>
-                  {guide && (
-                    <div className="guide" dir="auto" lang={d.lang}>
-                      {guide}
-                    </div>
-                  )}
-                </th>
-                <td className="col-weight">
-                  <Stars value={Math.round(f.weight)} readOnly={readOnly || Boolean(lock?.weights)} label={t('grid.importanceOf', { name })} onChange={(w) => onEdit(setWeight(f.id, w))} />
-                  {group?.weights?.has(f.id) && <div className="muted small">{t('group.weightAverage', { value: formatNumber(f.weight, 1) })}</div>}
-                </td>
-                {d.options.map((o) => {
-                  const key = cellKey(o.id, f.id);
-                  const value = values.get(key);
-                  const fact = facts.get(key);
-                  const cellNotes = notes.get(key) ?? 0;
-                  const baseline = pugh && d.settings.baselineId === o.id;
-                  const label = t('grid.cellLabel', { option: optionName(d, o, uiLang), factor: name });
-                  const h = heat(d, value);
-                  const groupCell = group?.cells.get(key);
-                  return (
-                    <td
-                      key={o.id}
-                      className={[
-                        'cell',
-                        value !== undefined ? 'scored' : '',
-                        baseline ? 'baseline' : '',
-                        results.winnerId === o.id ? 'win' : '',
-                        h < 0 ? 'neg' : '',
-                        groupCell && groupCell.n > 1 ? `split-${spreadLevel(groupCell.spread)}` : '',
-                      ].join(' ')}
-                      style={{ '--heat': Math.abs(h) } as CSSProperties}
-                    >
-                      {baseline ? (
-                        <span className="muted small">{t('pugh.baselineCell')}</span>
-                      ) : group ? (
-                        <GroupValue d={d} cell={groupCell} />
-                      ) : pugh ? (
-                        <PughInput d={d} value={value} readOnly={readOnly} label={label} onChange={(v) => onEdit(setRating(o.id, f.id, v))} />
-                      ) : (
-                        <ScoreInput d={d} value={value} readOnly={readOnly} label={label} onChange={(v) => onEdit(setScore(o.id, f.id, v))} />
-                      )}
-                      {fact && (
-                        <div className="fact" dir="auto" lang={d.lang}>
-                          {fact.text}
-                          {fact.url && <ExternalLink url={fact.url} />}
-                        </div>
-                      )}
-                      <button className="cell-more" onClick={() => onDetail({ optionId: o.id, factorId: f.id })} aria-label={t('grid.cellDetails', { name: label })}>
-                        <Icon name={cellNotes ? 'note' : 'more'} size={14} />
-                        {cellNotes > 0 && <span className="count">{cellNotes}</span>}
-                      </button>
-                    </td>
-                  );
-                })}
-                {!fixed && <td className="col-add" />}
-              </tr>
+                  <div className="opt-row row-blue">{s.rows[0]}</div>
+                  <div className="opt-row row-green">{s.rows[1]}</div>
+                  <div className="opt-row row-gold">{s.rows[2]}</div>
+                  <OptionStrip c={c} o={o} />
+                </div>
+              </th>
             );
           })}
-          {!fixed && (
-            <tr className="add-row">
-              <th className="col-factor" scope="row">
-                <button className="button ghost" onClick={() => onEdit(addFactor(''))}>
-                  <Icon name="plus" size={18} />
-                  {t('grid.addFactor')}
-                </button>
-              </th>
-              <td colSpan={d.options.length + 2} />
-            </tr>
+          {!c.fixed && (
+            <th className="col-add" scope="col">
+              <AddButton label={t('grid.addOption')} onClick={() => c.onEdit(addOption(''))} />
+            </th>
           )}
-        </tbody>
-      </table>
+        </tr>
+      </thead>
+      <tbody>
+        {d.factors.map((f) => (
+          <tr key={f.id}>
+            <th scope="row" className="col-factor">
+              <FactorName c={c} f={f} />
+            </th>
+            <td className="col-weight">
+              <Importance c={c} f={f} />
+            </td>
+            {d.options.map((o) => (
+              <Cell key={o.id} c={c} o={o} f={f} />
+            ))}
+            {!c.fixed && <td className="col-add" />}
+          </tr>
+        ))}
+        {!c.fixed && (
+          <tr className="add-row">
+            <th className="col-factor" scope="row">
+              <AddButton label={t('grid.addFactor')} onClick={() => c.onEdit(addFactor(''))} />
+            </th>
+            <td colSpan={d.options.length + 2} />
+          </tr>
+        )}
+      </tbody>
+    </table>
+  );
+}
+
+/** Options as rows, factors as columns: handy when there are many options and few factors. */
+function OptionRows({ c }: { c: Ctx }) {
+  const { d } = c;
+  return (
+    <table className="grid option-rows">
+      <thead>
+        <tr>
+          <th className="row-option corner" scope="col">
+            <div className="head-label">{t('grid.options')}</div>
+          </th>
+          {d.factors.map((f) => (
+            <th key={f.id} scope="col" className="col-factor-head">
+              <div className="factor-head">
+                <FactorName c={c} f={f}>
+                  <div className="factor-weight">
+                    <Importance c={c} f={f} />
+                  </div>
+                </FactorName>
+              </div>
+            </th>
+          ))}
+          {!c.fixed && (
+            <th className="col-add" scope="col">
+              <AddButton label={t('grid.addFactor')} onClick={() => c.onEdit(addFactor(''))} />
+            </th>
+          )}
+        </tr>
+      </thead>
+      <tbody>
+        {d.options.map((o) => {
+          const s = optionSummary(c, o);
+          return (
+            <tr key={o.id}>
+              <th scope="row" className={['row-option', s.win ? 'win' : '', s.baseline ? 'baseline' : ''].join(' ')} style={s.style}>
+                <div className="opt-line">
+                  <div className="opt-rank" title={s.win ? t('results.winner') : undefined}>
+                    {s.rank}
+                    {s.win && <Icon name="trophy" size={18} />}
+                  </div>
+                  <OptionStrip c={c} o={o} />
+                </div>
+                <div className="opt-sums">
+                  <span className="opt-row row-blue">{s.rows[0]}</span>
+                  <span className="opt-row row-green">{s.rows[1]}</span>
+                  <span className="opt-row row-gold">{s.rows[2]}</span>
+                </div>
+              </th>
+              {d.factors.map((f) => (
+                <Cell key={f.id} c={c} o={o} f={f} />
+              ))}
+              {!c.fixed && <td className="col-add" />}
+            </tr>
+          );
+        })}
+        {!c.fixed && (
+          <tr className="add-row">
+            <th className="row-option" scope="row">
+              <AddButton label={t('grid.addOption')} onClick={() => c.onEdit(addOption(''))} />
+            </th>
+            <td colSpan={d.factors.length + 1} />
+          </tr>
+        )}
+      </tbody>
+    </table>
+  );
+}
+
+export function Grid(props: MatrixProps) {
+  const { d, readOnly, lock } = props;
+  const values = useMemo(() => cellValues(d), [d]);
+  const facts = useMemo(() => new Map(d.facts.map((f) => [cellKey(f.optionId, f.factorId), f])), [d.facts]);
+  const notes = useMemo(() => noteCounts(d), [d]);
+  const c: Ctx = {
+    ...props,
+    fixed: readOnly || Boolean(lock?.structure),
+    pugh: d.settings.mode === 'pugh',
+    scored: values.size > 0,
+    values,
+    facts,
+    notes,
+  };
+  return (
+    <div className="grid-wrap">
+      {d.settings.rows === 'options' ? <OptionRows c={c} /> : <FactorRows c={c} />}
       {d.options.length === 0 && d.factors.length === 0 && <p className="empty-hint">{t('grid.emptyHint')}</p>}
     </div>
   );

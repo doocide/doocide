@@ -64,12 +64,19 @@
 
   "mode.weighted": "Note ponderate, 0–{max}",
   "mode.pugh": "Comparate cu o referință ({steps})",
+  "layout.rows": "Rânduri",
+  "layout.factors": "Factori",
+  "layout.options": "Opțiuni",
+  "layout.scoreBy": "Notează pe",
+  "layout.byFactor": "Factor",
+  "layout.byOption": "Opțiune",
 
   "tabs.score": "Notează",
   "tabs.results": "Rezultate",
   "tabs.setup": "Configurare",
 
   "grid.factors": "Factori",
+  "grid.options": "Opțiuni",
   "grid.importance": "Importanță",
   "grid.importanceOf": "Importanța pentru {name}",
   "grid.optionName": "Numele opțiunii",
@@ -101,6 +108,10 @@
   "cards.pager": "Factori",
   "cards.previous": "Factorul anterior",
   "cards.next": "Factorul următor",
+  "cards.optionOf": "Opțiunea {n} din {total}",
+  "cards.optionPager": "Opțiuni",
+  "cards.previousOption": "Opțiunea anterioară",
+  "cards.nextOption": "Opțiunea următoare",
 
   "setup.options": "Opțiuni",
   "setup.factors": "Factori",

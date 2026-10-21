@@ -64,6 +64,11 @@ export interface Settings {
   pughSteps: 1 | 2;
   /** The option every other option is compared against in pugh mode. */
   baselineId?: string;
+  /**
+   * What the matrix shows as rows: factors (the default, also when absent) or options. On phones:
+   * score one factor at a time, or one option at a time. Only a view choice; it changes no score.
+   */
+  rows?: 'factors' | 'options';
 }
 
 export interface Decision {

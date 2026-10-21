@@ -7,7 +7,7 @@ import { BallotsPanel, ballotLabel } from './BallotsPanel';
 import { Cards, Setup } from './Cards';
 import { CompareCodes, useShortCode } from './codes';
 import { DetailDialog } from './DetailDialog';
-import { confirmOrganizer, scoringLocked, setTitle, structureLocked, tidyNames, weightsLocked, type Edit, type Target } from './edit';
+import { confirmOrganizer, scoringLocked, setRows, setTitle, structureLocked, tidyNames, weightsLocked, type Edit, type Target } from './edit';
 import { downloadText, safeFileName } from './files';
 import { Grid, type GroupCells, type VoterValue } from './Grid';
 import { ResultsPanel } from './ResultsPanel';
@@ -142,7 +142,12 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
   const onlyGroup = gv !== null && !d.group && !ownScores;
   const [view, setView] = useState<'mine' | 'group'>(onlyGroup || (readOnly && gv) ? 'group' : 'mine');
   const showGroup = view === 'group' && gv !== null;
-  const shown = showGroup ? gv.merged : d;
+  // Rows: saved with the decision when it's yours to edit; on a read-only preview, only for this look.
+  const [rowsOverride, setRowsOverride] = useState<'factors' | 'options' | null>(null);
+  const rows = rowsOverride ?? d.settings.rows ?? 'factors';
+  const base = showGroup ? gv.merged : d;
+  const shown = useMemo(() => ((base.settings.rows ?? 'factors') === rows ? base : { ...base, settings: { ...base.settings, rows } }), [base, rows]);
+  const changeRows = (next: 'factors' | 'options') => (readOnly ? setRowsOverride(next) : onEdit(setRows(next)));
   const results = useMemo(() => computeResults(shown), [shown]);
   const analysis = useMemo(() => analyze(shown, results), [shown, results]);
   const [tab, setTab] = useState<'score' | 'results' | 'setup'>(d.options.length && d.factors.length ? 'score' : 'setup');
@@ -238,6 +243,25 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
             {t('decision.changeScoring')}
           </button>
         )}
+        <span className="layout-pick">
+          <span aria-hidden="true">{isPhone ? t('layout.scoreBy') : t('layout.rows')}</span>
+          <Segmented
+            value={rows}
+            label={isPhone ? t('layout.scoreBy') : t('layout.rows')}
+            onChange={changeRows}
+            options={
+              isPhone
+                ? [
+                    { value: 'factors', label: t('layout.byFactor') },
+                    { value: 'options', label: t('layout.byOption') },
+                  ]
+                : [
+                    { value: 'factors', label: t('layout.factors') },
+                    { value: 'options', label: t('layout.options') },
+                  ]
+            }
+          />
+        </span>
         {gv && !onlyGroup && (
           <Segmented
             value={view}

@@ -64,12 +64,19 @@
 
   "mode.weighted": "Weighted scores, 0–{max}",
   "mode.pugh": "Compared to a baseline ({steps})",
+  "layout.rows": "Rows",
+  "layout.factors": "Factors",
+  "layout.options": "Options",
+  "layout.scoreBy": "Score by",
+  "layout.byFactor": "Factor",
+  "layout.byOption": "Option",
 
   "tabs.score": "Score",
   "tabs.results": "Results",
   "tabs.setup": "Setup",
 
   "grid.factors": "Factors",
+  "grid.options": "Options",
   "grid.importance": "Importance",
   "grid.importanceOf": "Importance of {name}",
   "grid.optionName": "Option name",
@@ -101,6 +108,10 @@
   "cards.pager": "Factors",
   "cards.previous": "Previous factor",
   "cards.next": "Next factor",
+  "cards.optionOf": "Option {n} of {total}",
+  "cards.optionPager": "Options",
+  "cards.previousOption": "Previous option",
+  "cards.nextOption": "Next option",
 
   "setup.options": "Options",
   "setup.factors": "Factors",

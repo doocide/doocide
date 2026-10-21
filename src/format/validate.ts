@@ -196,7 +196,9 @@ function cleanSettings(v: unknown, optionIds: Set<string>): Settings {
   const scaleMax = SCALES.includes(scale as (typeof SCALES)[number]) ? (scale as number) : 10;
   const pughSteps = get(o, 'pughSteps') === 2 ? 2 : 1;
   const baselineId = refId(get(o, 'baselineId'), optionIds);
-  return { mode, scaleMax, pughSteps, ...(baselineId && { baselineId }) };
+  // Factors as rows is the default, so it's left out rather than written.
+  const optionRows = get(o, 'rows') === 'options';
+  return { mode, scaleMax, pughSteps, ...(baselineId && { baselineId }), ...(optionRows && { rows: 'options' as const }) };
 }
 
 function cleanScores(

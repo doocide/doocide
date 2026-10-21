@@ -10,6 +10,8 @@ Milestone 2a released as v0.2.0 (2026-10-20), live at https://doocide.github.io:
 
 Milestone 2b released as v0.3.0 (2026-10-21): signed invites and ballots (a device key for invites and named ballots, a fresh key per decision for anonymous ones), bad signatures refused, a person's later ballots held to the same key, and 12-digit short codes compared aloud to mark named ballots as verified.
 
+v0.3.1 (2026-10-21): a layout toggle saved in the decision file (`settings.rows`). Desktop shows factors or options as rows; phones score one factor or one option at a time. CSV export follows the layout.
+
 Next: the rest of milestone 2 in order: 2c passphrase and sealed encryption plus the optional library lock, 2d collecting ballots through a synced cloud folder. Then milestone 3 (AI copy-prompt and MCP, public sharing, room mode with QR codes, decision journal, ~35 languages).
 
 ## Stack and commands

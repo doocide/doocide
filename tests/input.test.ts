@@ -156,6 +156,13 @@ describe('size, depth and format limits', () => {
     expect(out.notes.some((n) => n.id === 'n9')).toBe(false);
   });
 
+  it('keeps only a known rows layout, and leaves the default out', () => {
+    const rows = (v: unknown) => validateEnvelope(envelope({ ...sampleDecision(), settings: { mode: 'weighted', scaleMax: 10, pughSteps: 1, rows: v } })).data.settings;
+    expect(rows('options').rows).toBe('options');
+    expect('rows' in rows('factors')).toBe(false);
+    expect('rows' in rows('sideways')).toBe(false);
+  });
+
   it('clamps out-of-range scores and weights', () => {
     const d = sampleDecision();
     d.scores[0] = { optionId: 'a', factorId: 'price', value: 9999 };
@@ -182,6 +189,14 @@ describe('spreadsheets', () => {
     expect(escapeSpreadsheetText('+1')).toBe(`'+1`);
     expect(escapeSpreadsheetText('@SUM(A1)')).toBe(`'@SUM(A1)`);
     expect(escapeSpreadsheetText('Price')).toBe('Price');
+  });
+
+  it('exports options as rows when the decision shows them that way', () => {
+    const d = sampleDecision({ settings: { mode: 'weighted', scaleMax: 10, pughSteps: 1, rows: 'options' } });
+    const lines = toCSV(d, new Map([['a', 71.5]]), { factor: 'Factor', weight: 'Weight', total: 'Total' }).trim().split('\r\n');
+    expect(lines[0]).toBe('Factor,Price,Safety,Looks,Total');
+    expect(lines[1]).toBe('Weight,5,4,1,');
+    expect(lines[2]).toBe('Car A,9,6,5,71.5');
   });
 
   it('exports names safely and numbers as numbers', () => {

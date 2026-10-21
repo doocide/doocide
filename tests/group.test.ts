@@ -170,7 +170,8 @@ describe('the whole round trip', () => {
   });
 
   it('every group file matches the published schema', () => {
-    const organizer = addBallots(unsigned(ballotFrom(groupDecision({ scoring: 'open', weights: 'everyone' }), 'v1', 4)))(groupDecision({ scoring: 'open', weights: 'everyone' }));
+    const start = groupDecision({ scoring: 'open', weights: 'everyone' }, { settings: { mode: 'weighted', scaleMax: 10, pughSteps: 1, rows: 'options' } });
+    const organizer = addBallots(unsigned(ballotFrom(start, 'v1', 4)))(start);
     const result = groupView(organizer)!.result;
     const files = [inviteEnvelope(organizer, result), ballotEnvelope(participantCopy(groupDecision({ weights: 'everyone' }))), resultsEnvelope(organizer, result)];
     for (const env of files) expect(validateSchema(JSON.parse(JSON.stringify(env))), JSON.stringify(validateSchema.errors)).toBe(true);

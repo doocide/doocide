@@ -114,5 +114,7 @@ export function toCSV(d: Decision, totals: Map<string, number>, labels: { factor
     lines.push([f.name, f.weight, ...d.options.map((o) => value.get(`${o.id} ${f.id}`) ?? '')]);
   }
   lines.push([labels.total, '', ...d.options.map((o) => totals.get(o.id) ?? '')]);
-  return lines.map((l) => l.map(csvCell).join(',')).join('\r\n') + '\r\n';
+  // Options as rows: the same table turned on its side, the way the decision shows it.
+  const out = d.settings.rows === 'options' ? lines[0]!.map((_, i) => lines.map((l) => l[i] ?? '')) : lines;
+  return out.map((l) => l.map(csvCell).join(',')).join('\r\n') + '\r\n';
 }

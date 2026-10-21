@@ -66,6 +66,16 @@ export const setSettings = (patch: Partial<Settings>): Edit => (d) => {
   return touch({ ...d, settings, pugh, scores });
 };
 
+/**
+ * Factors or options as the matrix rows. A view choice saved with the decision, so it isn't locked by
+ * ballots or by being a participant: it changes how the matrix looks, never a score.
+ */
+export const setRows = (rows: 'factors' | 'options'): Edit => (d) => {
+  if ((d.settings.rows ?? 'factors') === rows) return d;
+  const { rows: _rows, ...settings } = d.settings;
+  return touch({ ...d, settings: rows === 'options' ? { ...settings, rows } : settings });
+};
+
 // Options
 
 export const addOption = (name: string): Edit =>
@@ -342,7 +352,7 @@ export const refreshFromInvite = (invite: Invite, signed: boolean): Edit => (d) 
     title: inv.title,
     ...(inv.description && { description: inv.description }),
     lang: inv.lang,
-    settings: { ...inv.settings },
+    settings: { ...withoutRows(inv.settings), ...(d.settings.rows === 'options' && { rows: 'options' as const }) },
     options: inv.options,
     factors: inv.factors.map((f) => (everyone && ownWeight.has(f.id) ? { ...f, weight: ownWeight.get(f.id)! } : f)),
     facts: inv.facts,
@@ -365,6 +375,11 @@ export const markSent: Edit = (d) =>
   d.group?.role === 'participant'
     ? touch({ ...d, group: { ...d.group, revision: (d.group.revision ?? 0) + 1, sentAt: new Date().toISOString() } })
     : d;
+
+function withoutRows(s: Settings): Settings {
+  const { rows: _rows, ...rest } = s;
+  return rest;
+}
 
 function move<T extends { id: string }>(items: T[], id: string, by: -1 | 1): T[] {
   const i = items.findIndex((x) => x.id === id);

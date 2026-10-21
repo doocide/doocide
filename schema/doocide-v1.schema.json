@@ -73,7 +73,11 @@
             "mode": { "enum": ["weighted", "pugh"], "description": "weighted: score each option 0..scaleMax. pugh: rate each option against a baseline option." },
             "scaleMax": { "enum": [5, 10, 100] },
             "pughSteps": { "enum": [1, 2], "description": "1: ratings -1, 0, +1. 2: ratings -2 to +2." },
-            "baselineId": { "$ref": "#/definitions/id" }
+            "baselineId": { "$ref": "#/definitions/id" },
+            "rows": {
+              "enum": ["factors", "options"],
+              "description": "What the matrix shows as rows. Default: factors (also when left out). A view choice only; it changes no score."
+            }
           },
           "additionalProperties": false
         },
