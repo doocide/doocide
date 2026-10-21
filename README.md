@@ -19,6 +19,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/doocide/doocide/actions/workflows/pages.yml"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/doocide/doocide/pages.yml?branch=main&label=tests&labelColor=d9ead3"></a>
   <a href="#privacy-by-design"><img alt="No tracking" src="docs/assets/badge-tracking.svg"></a>
   <a href="#help-translate"><img alt="2 languages and counting" src="docs/assets/badge-languages.svg"></a>
   <a href="LICENSE"><img alt="App: AGPL-3.0" src="docs/assets/badge-app-license.svg"></a>

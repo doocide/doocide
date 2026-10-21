@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="159" height="20" viewBox="0 0 159 20" role="img" aria-label="2 languages and counting">
-  <rect width="159" height="20" rx="10" fill="#fff2cc"/>
-  <circle cx="11" cy="10" r="3" fill="#bf9000"/>
-  <text x="19" y="10.5" dominant-baseline="central" font-family="system-ui, sans-serif" font-size="10.5" font-weight="400" fill="#5c4700" textLength="132" lengthAdjust="spacingAndGlyphs">2 languages and counting</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="181" height="22" viewBox="0 0 181 22" role="img" aria-label="2 languages and counting">
+  <rect width="181" height="22" rx="11" fill="#fff2cc"/>
+  <circle cx="12.5" cy="11" r="3.5" fill="#bf9000"/>
+  <text x="21" y="11.5" dominant-baseline="central" font-family="system-ui, sans-serif" font-size="12" font-weight="400" fill="#5c4700" textLength="151" lengthAdjust="spacingAndGlyphs">2 languages and counting</text>
 </svg>
