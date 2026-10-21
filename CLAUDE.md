@@ -6,7 +6,7 @@ Free, local-first decision tool based on the Pugh Matrix. No server, no accounts
 
 Milestone 1 released as v0.1.0 (2026-10-20), live at https://doocide.github.io: solo decisions, share links and files, paste-a-table import, CSV export, private/shared notes, facts, EN + RO.
 
-Milestone 2a tagged v0.2.0 (2026-10-20), not yet released to the site: invites and ballots by link or file, organizer approval, anonymous or named ballots (locked after the first ballot), blind or open scoring, combined results (average or median), a disagreement list, and a group results share.
+Milestone 2a released as v0.2.0 (2026-10-20), live at https://doocide.github.io: invites and ballots by link or file, organizer approval, anonymous or named ballots (locked after the first ballot), blind or open scoring, combined results (average or median), a disagreement list, and a group results share.
 
 Next: the rest of milestone 2 in order: 2b signatures and short-code verification, 2c passphrase and sealed encryption plus the optional library lock, 2d collecting ballots through a synced cloud folder. Then milestone 3 (AI copy-prompt and MCP, public sharing, room mode with QR codes, decision journal, ~35 languages).
 
