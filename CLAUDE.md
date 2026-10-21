@@ -4,7 +4,7 @@ Free, local-first decision tool based on the Pugh Matrix. No server, no accounts
 
 ## Status
 
-Milestone 1 built (2026-10-19): solo decisions, share links and files, paste-a-table import, CSV export, private/shared notes, facts, EN + RO. Not yet pushed or published.
+Milestone 1 released as v0.1.0 (2026-10-20), live at https://doocide.github.io: solo decisions, share links and files, paste-a-table import, CSV export, private/shared notes, facts, EN + RO.
 
 Next: milestone 2 (group ballots, blind or open scoring per decision, merge, disagreement map, anonymity, signatures, passphrase and sealed encryption, and an optional passphrase lock that encrypts the local library and backup files at rest), then milestone 3 (AI copy-prompt and MCP, public sharing, room mode with QR codes, decision journal, ~35 languages).
 
