@@ -7,7 +7,7 @@ import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import { cellKey, cellValues, spreadLevel, type Results } from '../engine';
 import type { CellResult, Decision, Fact, Factor, Option, WeightResult } from '../format/types';
 import { formatNumber, t } from '../i18n';
-import { PughInput, ScoreInput, formatValue, heat } from './controls';
+import { NameField, PughInput, ScoreInput, formatValue, heat } from './controls';
 import { addFactor, addOption, renameFactor, renameOption, setRating, setScore, setWeight, tidyNames, type Edit, type Target } from './edit';
 import { ExternalLink } from './ExternalLink';
 import { factorGuide, factorName, optionName } from './labels';
@@ -129,16 +129,14 @@ function OptionStrip({ c, o }: { c: Ctx; o: Option }) {
   const count = c.notes.get(`${o.id} `) ?? 0;
   return (
     <div className="opt-strip">
-      <input
+      <NameField
         className="opt-name"
         value={o.name}
         placeholder={name}
-        dir="auto"
         lang={c.d.lang}
-        maxLength={200}
         readOnly={c.fixed}
-        aria-label={t('grid.optionName')}
-        onChange={(e) => c.onEdit(renameOption(o.id, e.target.value))}
+        label={t('grid.optionName')}
+        onChange={(v) => c.onEdit(renameOption(o.id, v))}
         onBlur={() => c.onEdit(tidyNames)}
       />
       <button className="icon-button small" onClick={() => c.onDetail({ optionId: o.id })} aria-label={t('grid.optionDetails', { name })}>
@@ -157,16 +155,13 @@ function FactorName({ c, f, children }: { c: Ctx; f: Factor; children?: ReactNod
   return (
     <>
       <div className="factor-cell">
-        <input
-          className="name-input"
+        <NameField
           value={f.name}
           placeholder={name}
-          dir="auto"
           lang={c.d.lang}
-          maxLength={200}
           readOnly={c.fixed}
-          aria-label={t('grid.factorName')}
-          onChange={(e) => c.onEdit(renameFactor(f.id, e.target.value))}
+          label={t('grid.factorName')}
+          onChange={(v) => c.onEdit(renameFactor(f.id, v))}
           onBlur={() => c.onEdit(tidyNames)}
         />
         <button className="icon-button small" onClick={() => c.onDetail({ factorId: f.id })} aria-label={t('grid.factorDetails', { name })}>

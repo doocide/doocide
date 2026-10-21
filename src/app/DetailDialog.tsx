@@ -6,7 +6,7 @@ import { checkLink } from '../format/sanitize';
 import { LIMITS } from '../format/limits';
 import type { Decision, Visibility } from '../format/types';
 import { formatDate, t } from '../i18n';
-import { PughInput, ScoreInput, formatValue } from './controls';
+import { NameField, PughInput, ScoreInput, formatValue } from './controls';
 import {
   addNote,
   moveFactor,
@@ -199,7 +199,16 @@ function OptionSection({ d, optionId, readOnly, uiLang, onEdit, onClose }: { d: 
     <>
       <label className="field">
         <span className="field-label">{t('detail.name')}</span>
-        <input value={option.name} placeholder={optionName(d, option, uiLang)} dir="auto" lang={d.lang} readOnly={readOnly} maxLength={LIMITS.text.name} onChange={(e) => onEdit(renameOption(optionId, e.target.value))} onBlur={() => onEdit(tidyNames)} />
+        <NameField
+          className="name-box"
+          value={option.name}
+          placeholder={optionName(d, option, uiLang)}
+          lang={d.lang}
+          readOnly={readOnly}
+          label={t('detail.name')}
+          onChange={(v) => onEdit(renameOption(optionId, v))}
+          onBlur={() => onEdit(tidyNames)}
+        />
       </label>
       <label className="field">
         <span className="field-label">{t('detail.description')}</span>
@@ -262,7 +271,16 @@ function FactorSection({
     <>
       <label className="field">
         <span className="field-label">{t('detail.name')}</span>
-        <input value={factor.name} placeholder={name} dir="auto" lang={d.lang} readOnly={readOnly} maxLength={LIMITS.text.name} onChange={(e) => onEdit(renameFactor(factorId, e.target.value))} onBlur={() => onEdit(tidyNames)} />
+        <NameField
+          className="name-box"
+          value={factor.name}
+          placeholder={name}
+          lang={d.lang}
+          readOnly={readOnly}
+          label={t('detail.name')}
+          onChange={(v) => onEdit(renameFactor(factorId, v))}
+          onBlur={() => onEdit(tidyNames)}
+        />
       </label>
       <div className="field">
         <span className="field-label">{t('grid.importance')}</span>

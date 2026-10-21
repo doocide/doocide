@@ -844,8 +844,20 @@ a:focus-visible {
   width: var(--option-w);
 }
 
+/* The header fills its cell (the 1px height lets 100% work in a table), so when a name wraps the
+   summary rows still line up across options and every name strip reaches the same bottom. */
+.grid thead .col-option {
+  height: 1px;
+}
+
 .opt-head {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.opt-head .opt-strip {
+  flex: 1;
 }
 
 .opt-big {
@@ -971,6 +983,21 @@ a:focus-visible {
   background: transparent;
   padding: 5px 6px;
   font-weight: 600;
+}
+
+/* Names wrap onto as many lines as they need (NameField grows to fit), so the whole name always shows. */
+.name-field {
+  display: block;
+  resize: none;
+  overflow: hidden;
+  min-height: 0;
+  line-height: 1.3;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.opt-name.name-field {
+  text-align: center;
 }
 
 .name-input:hover:not([readonly]),

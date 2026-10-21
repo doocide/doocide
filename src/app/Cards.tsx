@@ -5,7 +5,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { cellKey, cellValues } from '../engine';
 import type { Decision, Factor, Option } from '../format/types';
 import { formatNumber, t } from '../i18n';
-import { formatValue } from './controls';
+import { NameField, formatValue } from './controls';
 import { addFactor, addOption, renameFactor, renameOption, setRating, setScore, setWeight, tidyNames } from './edit';
 import { ExternalLink } from './ExternalLink';
 import { GroupValue, noteCounts, scoreLabel, type MatrixProps } from './Grid';
@@ -233,18 +233,7 @@ export function Setup({ d, results, readOnly, uiLang, onEdit, onDetail, lock }: 
         <ul className="setup-list">
           {d.options.map((o) => (
             <li key={o.id}>
-              <input
-                className="name-input"
-                value={o.name}
-                placeholder={optionName(d, o, uiLang)}
-                dir="auto"
-                lang={d.lang}
-                maxLength={200}
-                readOnly={fixed}
-                aria-label={t('grid.optionName')}
-                onChange={(e) => onEdit(renameOption(o.id, e.target.value))}
-                onBlur={() => onEdit(tidyNames)}
-              />
+              <NameField                value={o.name}                placeholder={optionName(d, o, uiLang)}                lang={d.lang}                readOnly={fixed}                label={t('grid.optionName')}                onChange={(v) => onEdit(renameOption(o.id, v))}                onBlur={() => onEdit(tidyNames)}              />
               <span className="muted small">{results.byOption.has(o.id) ? scoreLabel(d, results, o.id) : ''}</span>
               <button className="icon-button small" onClick={() => onDetail({ optionId: o.id })} aria-label={t('grid.optionDetails', { name: optionName(d, o, uiLang) })}>
                 <Icon name="more" size={16} />
@@ -266,18 +255,7 @@ export function Setup({ d, results, readOnly, uiLang, onEdit, onDetail, lock }: 
             const name = factorName(d, f, uiLang);
             return (
               <li key={f.id}>
-                <input
-                  className="name-input"
-                  value={f.name}
-                  placeholder={name}
-                  dir="auto"
-                  lang={d.lang}
-                  maxLength={200}
-                  readOnly={fixed}
-                  aria-label={t('grid.factorName')}
-                  onChange={(e) => onEdit(renameFactor(f.id, e.target.value))}
-                  onBlur={() => onEdit(tidyNames)}
-                />
+                <NameField                  value={f.name}                  placeholder={name}                  lang={d.lang}                  readOnly={fixed}                  label={t('grid.factorName')}                  onChange={(v) => onEdit(renameFactor(f.id, v))}                  onBlur={() => onEdit(tidyNames)}                />
                 <Stars value={Math.round(f.weight)} readOnly={readOnly || Boolean(lock?.weights)} label={t('grid.importanceOf', { name })} onChange={(w) => onEdit(setWeight(f.id, w))} />
                 <button className="icon-button small" onClick={() => onDetail({ factorId: f.id })} aria-label={t('grid.factorDetails', { name })}>
                   <Icon name="more" size={16} />

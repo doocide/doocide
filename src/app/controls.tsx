@@ -1,8 +1,79 @@
-// Score inputs shared by the desktop grid, the mobile cards and the detail panel.
+// Inputs shared by the desktop grid, the mobile cards and the detail panel: names and scores.
 
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { Decision } from '../format/types';
 import { t } from '../i18n';
 import { Segmented } from './ui';
+
+/** Grows a text area to fit its text, so nothing is ever hidden behind a scroll. */
+function fit(el: HTMLTextAreaElement) {
+  el.style.height = '0px';
+  el.style.height = `${el.scrollHeight}px`;
+}
+
+/**
+ * An option or factor name that wraps onto as many lines as it needs, so the whole name always
+ * shows. It's still one line of text: Enter finishes editing, and pasted line breaks become spaces.
+ */
+export function NameField({
+  value,
+  placeholder,
+  label,
+  lang,
+  readOnly,
+  className = 'name-input',
+  onChange,
+  onBlur,
+}: {
+  value: string;
+  placeholder: string;
+  label: string;
+  lang: string;
+  readOnly?: boolean;
+  className?: string;
+  onChange: (v: string) => void;
+  onBlur: () => void;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    if (ref.current) fit(ref.current);
+  }, [value, placeholder]);
+  // Columns can get wider or narrower (window size, other names); refit when the width changes.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let width = el.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth === width) return;
+      width = el.clientWidth;
+      fit(el);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      className={`name-field ${className}`}
+      value={value}
+      placeholder={placeholder}
+      dir="auto"
+      lang={lang}
+      maxLength={200}
+      readOnly={readOnly}
+      aria-label={label}
+      onChange={(e) => onChange(e.target.value.replace(/[\r\n]+/g, ' '))}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+      }}
+      onBlur={onBlur}
+    />
+  );
+}
 
 export function pughChoices(steps: 1 | 2) {
   const all = [
