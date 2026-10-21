@@ -5,8 +5,9 @@ import type { Decision, GroupSettings, Kind } from '../format/types';
 import { formatDate, t, useLang } from '../i18n';
 import { BallotsPanel, ballotLabel } from './BallotsPanel';
 import { Cards, Setup } from './Cards';
+import { CompareCodes, useShortCode } from './codes';
 import { DetailDialog } from './DetailDialog';
-import { scoringLocked, setTitle, structureLocked, tidyNames, weightsLocked, type Edit, type Target } from './edit';
+import { confirmOrganizer, scoringLocked, setTitle, structureLocked, tidyNames, weightsLocked, type Edit, type Target } from './edit';
 import { downloadText, safeFileName } from './files';
 import { Grid, type GroupCells, type VoterValue } from './Grid';
 import { ResultsPanel } from './ResultsPanel';
@@ -16,8 +17,8 @@ import { Icon, Menu, Segmented, useMediaQuery } from './ui';
 
 export interface Incoming {
   kind: Exclude<Kind, 'ballot'>;
-  /** An invite to score: the group's rules, who sent it, and whether this person already started. */
-  invite?: { settings: GroupSettings; organizerName?: string; joined: boolean };
+  /** An invite to score: the group's rules, who sent it (and the key that signed it), and whether this person already started. */
+  invite?: { settings: GroupSettings; organizerName?: string; organizerKey?: string; joined: boolean };
   onSave: () => void;
   onDiscard: () => void;
 }
@@ -34,17 +35,18 @@ interface Props {
   onOpenBallots?: () => void;
 }
 
-/** A name someone else typed, kept apart from the app's own words and marked as unchecked. */
-function TypedName({ name }: { name: string }) {
+/** A name someone else typed, kept apart from the app's own words and marked as unchecked until codes were compared. */
+function TypedName({ name, verified = false }: { name: string; verified?: boolean }) {
   return (
     <>
-      <bdi className="author">{name}</bdi> <span className="muted small">{t('incoming.notVerified')}</span>
+      <bdi className="author">{name}</bdi> <span className="muted small">{verified ? t('incoming.verified') : t('incoming.notVerified')}</span>
     </>
   );
 }
 
 function IncomingBanner({ incoming, title }: { incoming: Incoming; title: string }) {
   const { kind, invite } = incoming;
+  const code = useShortCode(invite?.organizerKey);
   return (
     <div className="incoming" role="region" aria-label={t('incoming.label')}>
       <Icon name={kind === 'backup' ? 'file' : kind === 'invite' ? 'people' : 'shield'} />
@@ -61,6 +63,7 @@ function IncomingBanner({ incoming, title }: { incoming: Incoming; title: string
           </p>
         )}
         {invite && <p className="small">{invite.settings.anonymity === 'anonymous' ? t('group.anonymousPromise') : t('group.namedPromise')}</p>}
+        {code && <p className="small muted">{t('incoming.signedCode', { code })}</p>}
       </div>
       <div className="actions">
         <button className="button" onClick={incoming.onDiscard}>
@@ -83,8 +86,14 @@ function IncomingBanner({ incoming, title }: { incoming: Incoming; title: string
 }
 
 /** A participant's own copy: whose decision it is, how anonymous the ballot is, and whether it went out. */
-function ParticipantBar({ d, onSend }: { d: Decision; onSend: () => void }) {
+function ParticipantBar({ d, onSend, onEdit }: { d: Decision; onSend: () => void; onEdit: (edit: Edit) => void }) {
   const g = d.group!;
+  const [checking, setChecking] = useState(false);
+  const checkCode = g.organizerKey && (
+    <button className="link-button small" onClick={() => setChecking(true)}>
+      {g.organizerConfirmed ? t('code.title') : t('participant.checkCode')}
+    </button>
+  );
   return (
     <div className="group-bar" role="region" aria-label={t('participant.label')}>
       <Icon name="people" />
@@ -93,16 +102,31 @@ function ParticipantBar({ d, onSend }: { d: Decision; onSend: () => void }) {
           {g.settings.anonymity === 'anonymous' ? t('participant.anonymous') : t('participant.named')}{' '}
           {g.sentAt ? t('participant.sent', { date: formatDate(g.sentAt) }) : t('participant.notSent')}
         </p>
-        {g.organizerName && (
+        {g.organizerName ? (
           <p className="small">
-            {t('incoming.invitedBy')} <TypedName name={g.organizerName} />
+            {t('incoming.invitedBy')} <TypedName name={g.organizerName} verified={g.organizerConfirmed} /> {checkCode}
           </p>
+        ) : (
+          g.organizerKey && (
+            <p className="small">
+              {t('participant.organizerSigned')} {checkCode}
+            </p>
+          )
         )}
       </div>
       <button className="button primary" onClick={onSend}>
         <Icon name="share" size={18} />
         {t('participant.send')}
       </button>
+      {checking && g.organizerKey && (
+        <CompareCodes
+          intro={t('code.organizer')}
+          publicKey={g.organizerKey}
+          matched={Boolean(g.organizerConfirmed)}
+          onMatch={() => onEdit(confirmOrganizer)}
+          onClose={() => setChecking(false)}
+        />
+      )}
     </div>
   );
 }
@@ -205,7 +229,7 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
       </header>
 
       {incoming && <IncomingBanner incoming={incoming} title={d.title || t('decision.untitled')} />}
-      {!readOnly && role === 'participant' && <ParticipantBar d={d} onSend={() => setDialog('share')} />}
+      {!readOnly && role === 'participant' && <ParticipantBar d={d} onSend={() => setDialog('share')} onEdit={onEdit} />}
 
       <div className="modebar">
         <span>{modeLine}</span>

@@ -1,7 +1,7 @@
-// Checks on incoming ballots, shown to the organizer before they approve anything.
-// MIT licensed (see LICENSE in this folder).
+// Checks on incoming ballots, shown to the organizer before they approve anything, and how each
+// approved ballot is labeled. MIT licensed (see LICENSE in this folder).
 
-import type { Ballot, Decision } from '../format/types';
+import type { Ballot, Decision, Group, ReceivedBallot, Signature, StoredBallot } from '../format/types';
 import { matchBallot } from '../format/validate';
 
 export type BallotFlag =
@@ -9,6 +9,12 @@ export type BallotFlag =
   | { kind: 'replaces' }
   /** The same or a newer ballot from this person is already in, so this one changes nothing. */
   | { kind: 'outdated' }
+  /** The signature doesn't match: the ballot was changed after it was signed, or it's damaged. Refused. */
+  | { kind: 'badSignature' }
+  /** Signed by a different key than this person's earlier ballot, so it can't replace it. Refused. */
+  | { kind: 'keyChanged' }
+  /** Not signed: made with Doocide 0.2.0. */
+  | { kind: 'unsigned' }
   /** Exactly the same scores as another ballot from someone else. */
   | { kind: 'copy' }
   /** Named groups: another ballot carries the same name. */
@@ -27,9 +33,20 @@ export type BallotFlag =
 export interface Review {
   /** The ballot fitted to the decision: unknown cells dropped, values clamped, names removed when anonymous. */
   ballot: Ballot;
+  signature: Signature;
   flags: BallotFlag[];
-  /** Approving it changes something (it isn't outdated). */
+  /** Approving it changes something: it isn't outdated or refused. */
   adds: boolean;
+}
+
+/**
+ * Can this ballot take its sender's place? A sender who signed before is held to that key from then
+ * on; a bad signature never gets in. This is the rule addBallots enforces, so the review shows it too.
+ */
+export function signatureAllows(prev: StoredBallot | undefined, r: ReceivedBallot): 'ok' | 'badSignature' | 'keyChanged' {
+  if (r.signature === 'invalid') return 'badSignature';
+  if (prev?.signed && (r.signature !== 'valid' || r.ballot.key !== prev.key)) return 'keyChanged';
+  return 'ok';
 }
 
 const scoreKey = (b: Ballot, pugh: boolean) =>
@@ -41,11 +58,11 @@ const scoreKey = (b: Ballot, pugh: boolean) =>
 const nameKey = (b: Ballot) => b.author?.trim().toLocaleLowerCase() ?? '';
 
 /** Fits each incoming ballot to the organizer's decision and lists what the organizer should know before approving. */
-export function reviewBallots(d: Decision, incoming: Ballot[]): Review[] {
+export function reviewBallots(d: Decision, incoming: ReceivedBallot[]): Review[] {
   const g = d.group;
   const pugh = d.settings.mode === 'pugh';
   const existing = new Map((g?.ballots ?? []).map((b) => [b.voterId, b]));
-  const matches = incoming.map((b) => matchBallot(b, d));
+  const matches = incoming.map((r) => ({ ...matchBallot(r.ballot, d), received: r }));
 
   // Several ballots from the same person in one batch: only the newest counts.
   const newest = new Map<string, number>();
@@ -62,12 +79,15 @@ export function reviewBallots(d: Decision, incoming: Ballot[]): Review[] {
   const expected = g?.settings.expected;
   const baselineId = pugh ? d.settings.baselineId : undefined;
 
-  return matches.map(({ ballot, nameRemoved }) => {
+  return matches.map(({ ballot, nameRemoved, received }) => {
     const flags: BallotFlag[] = [];
     const prev = existing.get(ballot.voterId);
+    const allowed = signatureAllows(prev, received);
     const stale = ballot.revision < (newest.get(ballot.voterId) ?? 0) || (prev !== undefined && prev.revision >= ballot.revision);
-    if (stale) flags.push({ kind: 'outdated' });
+    if (allowed !== 'ok') flags.push({ kind: allowed });
+    else if (stale) flags.push({ kind: 'outdated' });
     else if (prev) flags.push({ kind: 'replaces' });
+    if (received.signature === 'none') flags.push({ kind: 'unsigned' });
 
     const cells = pugh ? ballot.pugh : ballot.scores;
     if (cells.length === 0) flags.push({ kind: 'empty' });
@@ -83,10 +103,22 @@ export function reviewBallots(d: Decision, incoming: Ballot[]): Review[] {
 
     const name = nameKey(ballot);
     if (name && others(ballot.voterId).some((b) => nameKey(b) === name)) flags.push({ kind: 'sameName' });
-    if (expected && count > expected && !stale) flags.push({ kind: 'overCount', count, expected });
+    const adds = allowed === 'ok' && !stale;
+    if (expected && count > expected && adds) flags.push({ kind: 'overCount', count, expected });
     if (nameRemoved) flags.push({ kind: 'nameRemoved' });
     if (g && ballot.inviteId !== g.inviteId) flags.push({ kind: 'otherRound' });
 
-    return { ballot, flags, adds: !stale };
+    return { ballot, signature: received.signature, flags, adds };
   });
+}
+
+/**
+ * How a ballot's sender is shown. "verified" needs all three: a named group, a signature that checked
+ * out when the ballot arrived, and a key the organizer confirmed by comparing short codes with its
+ * owner. Anything less is "self-declared": the name is only what the sender typed.
+ */
+export function ballotStatus(b: StoredBallot, g: Group): 'verified' | 'self-declared' | 'no-name' | 'anonymous' {
+  if (g.settings.anonymity !== 'named') return 'anonymous';
+  if (!b.author) return 'no-name';
+  return b.signed && b.key && g.confirmed?.includes(b.key) ? 'verified' : 'self-declared';
 }

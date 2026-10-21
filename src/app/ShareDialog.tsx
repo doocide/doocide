@@ -1,8 +1,9 @@
 // Every share starts here, and shows exactly what goes out before anything does. The lists below
 // are counted from the very envelope that will be sent (see src/format/share.ts).
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { makeLink } from '../format/codec';
+import { signBallot, signInvite } from '../format/crypto';
 import { newId } from '../format/ids';
 import { LIMITS } from '../format/limits';
 import {
@@ -17,10 +18,12 @@ import {
   shareSummary,
   type ShareKind,
 } from '../format/share';
-import type { AnyEnvelope, Decision, GroupResult } from '../format/types';
+import type { AnyEnvelope, BallotEnvelope, Decision, GroupResult } from '../format/types';
 import { t } from '../i18n';
-import { markSent, setMyName, type Edit } from './edit';
+import { useDeviceKey, useShortCode } from './codes';
+import { markSent, restartVoter, setMyName, type Edit } from './edit';
 import { FILE_EXTENSION, canShareNatively, copyText, downloadText, safeFileName, shareNatively } from './files';
+import { ballotKey, deviceKey } from './keys';
 import { decisionTitle } from './labels';
 import { Dialog, Icon, Segmented, useToast } from './ui';
 
@@ -88,7 +91,7 @@ function LinkBox({ link, title }: { link: string; title: string }) {
   );
 }
 
-function Actions({ onFile, onLink, disabled }: { onFile: () => void; onLink: () => void; disabled?: boolean }) {
+function Actions({ onFile, onLink, disabled }: { onFile: () => void | Promise<void>; onLink: () => void | Promise<void>; disabled?: boolean }) {
   return (
     <div className="actions">
       <button className="button" disabled={disabled} onClick={onFile}>
@@ -114,24 +117,41 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
   const named = g.settings.anonymity === 'named';
   const [name, setName] = useState(g.myName ?? '');
   const [link, setLink] = useState<string | null>(null);
+  const [signingKey, setSigningKey] = useState<string>();
   const withName: Decision = { ...d, group: { ...g, myName: name } };
   const s = ballotSummary(withName);
   const missingName = named && !name.trim();
+  // Named ballots are signed with this device's key, so the organizer can compare its code with you.
+  const myCode = useShortCode(named ? signingKey : undefined);
+  // This device can't sign as the person who sent the earlier ballot (a copy restored elsewhere, say).
+  const newVoter = Boolean(g.key && signingKey && g.key !== signingKey);
+
+  useEffect(() => {
+    let live = true;
+    ballotKey(d).then((k) => live && setSigningKey(k.publicKey), () => {});
+    return () => {
+      live = false;
+    };
+  }, [d]);
 
   // Each send counts up the revision, so the organizer's app keeps the newest ballot from this person.
-  const send = () => {
-    const next = markSent(withName);
+  const send = async (): Promise<BallotEnvelope> => {
+    const signer = await ballotKey(d);
+    const base = g.key && g.key !== signer.publicKey ? restartVoter(withName) : withName;
+    const next = markSent({ ...base, group: { ...base.group!, key: signer.publicKey } });
     onEdit(() => next);
     const env = ballotEnvelope(next);
-    assertShareable(env);
-    return env;
+    const signed: BallotEnvelope = { ...env, data: await signBallot(env.data, signer) };
+    assertShareable(signed);
+    return signed;
   };
 
   const included = [
     t('share.yourScores', { count: s.scores }),
     ...(s.weights ? [t('share.yourImportance', { count: s.weights })] : []),
     t('share.countSharedNotes', { count: s.sharedNotes }),
-    s.name ? t('share.asName', { name: s.name }) : t('share.noName'),
+    s.name ? t('share.asName', { name: s.name }) : named ? t('share.nameMissing') : t('share.noName'),
+    named ? t('share.signedDevice', { code: myCode ?? '…' }) : t('share.signedDecision'),
   ];
 
   return (
@@ -155,12 +175,15 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
       )}
       <Preview title={decisionTitle(d)} included={included} leftOut={[t('share.privateNotesStay', { count: s.privateNotes })]} />
       {s.scores === 0 && <p className="callout warn small">{t('share.ballotEmpty')}</p>}
+      {newVoter && <p className="callout warn small">{t('participant.newVoter')}</p>}
       <p className="callout">{t('share.ballotHow')}</p>
+      {named && myCode && <p className="muted small">{t('participant.yourCode', { code: myCode })}</p>}
+      {!named && <p className="muted small">{t('participant.anonymousKey')}</p>}
       {!link ? (
         <Actions
-          disabled={missingName}
-          onFile={() => saveEnvelope(send(), `ballot-${newId(6)}`)}
-          onLink={async () => setLink(await makeLink(send(), location.href))}
+          disabled={missingName || !signingKey}
+          onFile={async () => saveEnvelope(await send(), `ballot-${newId(6)}`)}
+          onLink={async () => setLink(await makeLink(await send(), location.href))}
         />
       ) : (
         <LinkBox link={link} title={decisionTitle(d)} />
@@ -180,9 +203,17 @@ function OwnerShare({ d, result, initial, onClose }: Props) {
   const [kind, setKind] = useState<Kind>(initial ?? (organizer ? 'invite' : 'decision'));
   const [link, setLink] = useState<string | null>(null);
   const g = d.group;
+  // Invites are signed with this device's key, so people can check by its code that an invite is yours.
+  const myKey = useDeviceKey(organizer);
+  const myCode = useShortCode(myKey);
 
-  const envelope = (): AnyEnvelope =>
-    kind === 'invite' ? inviteEnvelope(d, result ?? undefined) : kind === 'results' && result ? resultsEnvelope(d, result) : shareEnvelope(d, kind === 'template' ? 'template' : 'decision');
+  const envelope = async (): Promise<AnyEnvelope> => {
+    if (kind === 'invite') {
+      const env = inviteEnvelope(d, result ?? undefined);
+      return { ...env, data: await signInvite(env.data, await deviceKey()) };
+    }
+    return kind === 'results' && result ? resultsEnvelope(d, result) : shareEnvelope(d, kind === 'template' ? 'template' : 'decision');
+  };
 
   let included: string[];
   let leftOut: string[];
@@ -198,6 +229,7 @@ function OwnerShare({ d, result, initial, onClose }: Props) {
       g.settings.weights === 'organizer' ? t('share.importanceSet') : t('share.importanceStart'),
       g.settings.scoring === 'blind' ? t('share.blindNone') : s.resultBallots ? t('share.openResults', { count: s.resultBallots }) : t('share.openNone'),
       g.settings.anonymity === 'anonymous' ? t('share.inviteAnonymous') : s.organizerName ? t('share.inviteNamedAs', { name: s.organizerName }) : t('share.inviteNamed'),
+      t('share.signedDevice', { code: myCode ?? '…' }),
     ];
     leftOut = [
       t('share.ownScores', { count: s.ownScores }),
@@ -259,11 +291,15 @@ function OwnerShare({ d, result, initial, onClose }: Props) {
       <Preview title={decisionTitle(d)} included={included} leftOut={leftOut} />
       <p className="callout">{t('share.forever')}</p>
       {!link ? (
-        <Actions onFile={() => saveEnvelope(envelope(), fileName)} onLink={async () => {
-          const env = envelope();
-          assertShareable(env);
-          setLink(await makeLink(env, location.href));
-        }} />
+        <Actions
+          disabled={kind === 'invite' && !myKey}
+          onFile={async () => saveEnvelope(await envelope(), fileName)}
+          onLink={async () => {
+            const env = await envelope();
+            assertShareable(env);
+            setLink(await makeLink(env, location.href));
+          }}
+        />
       ) : (
         <LinkBox link={link} title={decisionTitle(d)} />
       )}

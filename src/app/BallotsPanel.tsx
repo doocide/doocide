@@ -1,9 +1,12 @@
 // The organizer's ballots: who's in, who's left out, and how to collect more. The 2010 "merge these
 // perspectives" screen, without a server.
 
+import { useState } from 'react';
+import { ballotStatus } from '../engine';
 import type { Decision, StoredBallot } from '../format/types';
 import { formatDate, t } from '../i18n';
-import { removeBallot, setBallotIncluded, setIncludeOwn, type Edit } from './edit';
+import { CompareCodes, useDeviceKey, useShortCode } from './codes';
+import { confirmKey, removeBallot, setBallotIncluded, setIncludeOwn, unconfirmKey, type Edit } from './edit';
 import { Icon, useConfirm } from './ui';
 
 /** A ballot's name: the one its sender typed (named groups), or a number. */
@@ -23,6 +26,8 @@ interface Props {
 
 export function BallotsPanel({ d, voters, onEdit, onInvite, onOpenBallots }: Props) {
   const ask = useConfirm();
+  const [comparing, setComparing] = useState<{ ballot: StoredBallot; label: string } | null>(null);
+  const myCode = useShortCode(useDeviceKey());
   const g = d.group;
   if (g?.role !== 'organizer') return null;
   const own = (d.settings.mode === 'pugh' ? d.pugh : d.scores).length;
@@ -49,16 +54,27 @@ export function BallotsPanel({ d, voters, onEdit, onInvite, onOpenBallots }: Pro
         </li>
         {g.ballots.map((b, i) => {
           const label = ballotLabel(d, b, i);
+          const status = ballotStatus(b, g);
           return (
             <li key={b.voterId}>
               <label className="check">
                 <input type="checkbox" checked={b.included} onChange={(e) => onEdit(setBallotIncluded(b.voterId, e.target.checked))} />
                 <bdi>{label}</bdi>
               </label>
-              {b.author && (
+              {status === 'verified' && (
+                <button className="badge verified" onClick={() => setComparing({ ballot: b, label })} title={t('code.matched')}>
+                  <Icon name="check" size={12} /> {t('ballots.verified')}
+                </button>
+              )}
+              {status === 'self-declared' && (
                 <span className="muted small" title={t('notes.authorUnverified')}>
                   {t('review.selfDeclared')}
                 </span>
+              )}
+              {status === 'self-declared' && b.signed && b.key && (
+                <button className="link-button small" onClick={() => setComparing({ ballot: b, label })}>
+                  {t('ballots.compare')}
+                </button>
               )}
               <span className="muted small">
                 {formatDate(b.receivedAt)}
@@ -92,6 +108,21 @@ export function BallotsPanel({ d, voters, onEdit, onInvite, onOpenBallots }: Pro
         </button>
       </div>
       <p className="muted small">{t('ballots.how')}</p>
+      {myCode && (
+        <p className="muted small">
+          {t('ballots.yourCode', { code: myCode })} {t('ballots.yourCodeHelp')}
+        </p>
+      )}
+      {comparing?.ballot.key && (
+        <CompareCodes
+          intro={t('code.ballot', { name: comparing.label })}
+          publicKey={comparing.ballot.key}
+          matched={ballotStatus(comparing.ballot, g) === 'verified'}
+          onMatch={() => onEdit(confirmKey(comparing.ballot.key!))}
+          onUnmatch={() => onEdit(unconfirmKey(comparing.ballot.key!))}
+          onClose={() => setComparing(null)}
+        />
+      )}
     </section>
   );
 }

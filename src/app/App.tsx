@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { loadTemplateText } from '@packs';
 import { appBase, decodePayload, readFragment } from '../format/codec';
 import { adopt, emptyDecision, joinInvite } from '../format/create';
-import type { AnyEnvelope, Ballot, Decision, Envelope, Invite, InviteEnvelope } from '../format/types';
+import { checkBallot, checkInvite } from '../format/crypto';
+import type { AnyEnvelope, Ballot, Decision, Envelope, Invite, InviteEnvelope, ReceivedBallot } from '../format/types';
 import { FormatError, parseAnyEnvelopeText, parseEnvelopeText, type FormatErrorCode } from '../format/validate';
 import { getLang, t, useLang } from '../i18n';
 import { BallotReview } from './BallotReview';
@@ -11,6 +12,7 @@ import { addBallots, refreshFromInvite, type Edit } from './edit';
 import { FILE_EXTENSION, pickFileText, pickFilesText } from './files';
 import { ImportDialog } from './ImportDialog';
 import { TemplatesDialog } from './InfoDialogs';
+import { forgetDecisionKey } from './keys';
 import { decisionTitle } from './labels';
 import { Library } from './Library';
 import { downloadBackup } from './backup';
@@ -18,13 +20,15 @@ import { forgetBackup, getBackups } from './prefs';
 import { deleteDecision, isPersistent, listDecisions, requestPersistence, saveDecision, storagePersisted } from './store';
 import { Icon, useConfirm, useToast } from './ui';
 
-type ErrorCode = FormatErrorCode | 'template-missing' | 'ballot-unknown';
+type ErrorCode = FormatErrorCode | 'template-missing' | 'ballot-unknown' | 'bad-signature';
 
 type View =
   | { name: 'library' }
   | { name: 'decision'; id: string }
-  | { name: 'incoming'; env: Envelope | InviteEnvelope }
-  | { name: 'review'; decisionId: string; ballots: Ballot[]; skipped: number }
+  | { name: 'incoming'; env: Envelope }
+  /** `signed`: the invite's signature checked out. */
+  | { name: 'incoming-invite'; env: InviteEnvelope; signed: boolean }
+  | { name: 'review'; decisionId: string; ballots: ReceivedBallot[]; skipped: number }
   | { name: 'error'; code: ErrorCode };
 
 const errorCode = (e: unknown): FormatErrorCode => (e instanceof FormatError ? e.code : 'bad-data');
@@ -94,11 +98,20 @@ export function App() {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  /** Where an incoming envelope opens. Nothing is saved here: every path ends at a screen with a button. */
-  const viewFor = useCallback((env: AnyEnvelope): View => {
+  /**
+   * Where an incoming envelope opens. Signatures are checked here, before anything is shown. Nothing is
+   * saved: every path ends at a screen with a button.
+   */
+  const viewFor = useCallback(async (env: AnyEnvelope): Promise<View> => {
     if (env.kind === 'ballot') {
       const d = findOrganizer(decisionsRef.current.values(), env.data);
-      return d ? { name: 'review', decisionId: d.id, ballots: [env.data], skipped: 0 } : { name: 'error', code: 'ballot-unknown' };
+      if (!d) return { name: 'error', code: 'ballot-unknown' };
+      return { name: 'review', decisionId: d.id, ballots: [{ ballot: env.data, signature: await checkBallot(env.data) }], skipped: 0 };
+    }
+    if (env.kind === 'invite') {
+      const signature = await checkInvite(env.data);
+      if (signature === 'invalid') return { name: 'error', code: 'bad-signature' };
+      return { name: 'incoming-invite', env, signed: signature === 'valid' };
     }
     return { name: 'incoming', env };
   }, []);
@@ -109,7 +122,7 @@ export function App() {
     const req = readFragment(location.hash);
     if (req.type === 'none') return;
     try {
-      if (req.type === 'data') setView(viewFor(await decodePayload(req.payload)));
+      if (req.type === 'data') setView(await viewFor(await decodePayload(req.payload)));
       else if (req.type === 'template') {
         const text = await loadTemplateText(req.name);
         if (!text) return setView({ name: 'error', code: 'template-missing' });
@@ -191,6 +204,7 @@ export function App() {
       next.delete(id);
       commit(next);
       await deleteDecision(id);
+      await forgetDecisionKey(id);
       forgetBackup(id);
       setBackups(getBackups());
       go({ name: 'library' }, true);
@@ -201,7 +215,7 @@ export function App() {
   const openFile = async () => {
     try {
       const text = await pickFileText(`${FILE_EXTENSION},.json,application/json`);
-      if (text !== null) go(viewFor(parseAnyEnvelopeText(text)));
+      if (text !== null) go(await viewFor(parseAnyEnvelopeText(text)));
     } catch (e) {
       setView({ name: 'error', code: errorCode(e) });
     }
@@ -211,12 +225,12 @@ export function App() {
   const openBallots = async (d: Decision) => {
     const picked = await pickFilesText(`${FILE_EXTENSION},.json,application/json`);
     if (!picked) return;
-    const ballots: Ballot[] = [];
+    const ballots: ReceivedBallot[] = [];
     let skipped = picked.failed;
     for (const text of picked.texts) {
       try {
         const env = parseAnyEnvelopeText(text);
-        if (env.kind === 'ballot' && findOrganizer([d], env.data)) ballots.push(env.data);
+        if (env.kind === 'ballot' && findOrganizer([d], env.data)) ballots.push({ ballot: env.data, signature: await checkBallot(env.data) });
         else skipped++;
       } catch {
         skipped++;
@@ -269,36 +283,43 @@ export function App() {
     }
   }
 
+  if (view.name === 'incoming-invite') {
+    const invite = view.env.data;
+    const { signed } = view;
+    const joined = findJoined(decisions.values(), invite);
+    return (
+      <DecisionView
+        d={{ ...invite.decision, ...(invite.result && { groupResult: invite.result }) }}
+        incoming={{
+          kind: 'invite',
+          invite: {
+            settings: invite.settings,
+            ...(invite.organizerName && { organizerName: invite.organizerName }),
+            ...(signed && invite.key && { organizerKey: invite.key }),
+            joined: Boolean(joined),
+          },
+          onSave: () => {
+            if (joined) {
+              edit(joined.id, refreshFromInvite(invite, signed));
+              go({ name: 'decision', id: joined.id }, true);
+            } else {
+              add(joinInvite(invite, getLang(), signed));
+              toast(t('incoming.joined'));
+            }
+          },
+          onDiscard: () => go({ name: 'library' }, true),
+        }}
+        onEdit={() => {}}
+        onBack={() => go({ name: 'library' }, true)}
+        onBackup={() => {}}
+        onDuplicate={() => {}}
+        onDelete={() => {}}
+      />
+    );
+  }
+
   if (view.name === 'incoming') {
     const { env } = view;
-    if (env.kind === 'invite') {
-      const invite = env.data;
-      const joined = findJoined(decisions.values(), invite);
-      return (
-        <DecisionView
-          d={{ ...invite.decision, ...(invite.result && { groupResult: invite.result }) }}
-          incoming={{
-            kind: 'invite',
-            invite: { settings: invite.settings, ...(invite.organizerName && { organizerName: invite.organizerName }), joined: Boolean(joined) },
-            onSave: () => {
-              if (joined) {
-                edit(joined.id, refreshFromInvite(invite));
-                go({ name: 'decision', id: joined.id }, true);
-              } else {
-                add(joinInvite(invite, getLang()));
-                toast(t('incoming.joined'));
-              }
-            },
-            onDiscard: () => go({ name: 'library' }, true),
-          }}
-          onEdit={() => {}}
-          onBack={() => go({ name: 'library' }, true)}
-          onBackup={() => {}}
-          onDuplicate={() => {}}
-          onDelete={() => {}}
-        />
-      );
-    }
     return (
       <DecisionView
         d={env.data}

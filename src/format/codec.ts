@@ -11,14 +11,14 @@ export const TEMPLATE_KEY = 't';
 
 const B64URL = /^[A-Za-z0-9_-]*$/;
 
-function toBase64Url(bytes: Uint8Array): string {
+export function toBase64Url(bytes: Uint8Array): string {
   let binary = '';
   const chunk = 0x8000;
   for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function fromBase64Url(text: string): Uint8Array {
+export function fromBase64Url(text: string): Uint8Array {
   if (!B64URL.test(text)) throw new FormatError('bad-data');
   const b64 = text.replace(/-/g, '+').replace(/_/g, '/');
   let binary: string;

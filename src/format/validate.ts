@@ -79,6 +79,10 @@ function cleanDate(v: unknown, fallback: string): string {
 
 const cleanId = (v: unknown): string | undefined => (typeof v === 'string' && ID_PATTERN.test(v) ? v : undefined);
 
+/** A public key or a signature: base64url, short. Whether it actually verifies is checked in src/format/crypto.ts. */
+const cleanKey = (v: unknown): string | undefined =>
+  typeof v === 'string' && v.length > 0 && v.length <= LIMITS.text.key && /^[A-Za-z0-9_-]+$/.test(v) ? v : undefined;
+
 const intIn = (v: unknown, min: number, max: number): number | undefined =>
   typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : undefined;
 
@@ -326,6 +330,8 @@ export function validateBallot(raw: unknown): Ballot {
   const now = new Date().toISOString();
   const author = cleanText(get(raw, 'author'), T.author);
   const weights = cleanWeights(get(raw, 'weights'), null);
+  const key = cleanKey(get(raw, 'key'));
+  const sig = cleanKey(get(raw, 'sig'));
   return {
     decisionId,
     inviteId,
@@ -338,6 +344,8 @@ export function validateBallot(raw: unknown): Ballot {
     pugh: cleanScores(get(raw, 'pugh'), null, null, -2, 2, true),
     ...(weights.length > 0 && { weights }),
     notes: cleanNotes(get(raw, 'notes'), null, null, false, now).map(({ author: _a, ...n }) => n),
+    ...(key && { key }),
+    ...(sig && { sig }),
   };
 }
 
@@ -379,6 +387,8 @@ function matchTo(b: Ballot, s: Shape): BallotMatch {
       pugh,
       ...(weights.length > 0 && { weights }),
       notes,
+      // The key stays, so later ballots from this person can be held to it. The signature was checked on arrival.
+      ...(b.key && { key: b.key }),
     },
     nameRemoved: anonymous && Boolean(b.author),
     dropped: b.scores.length + b.pugh.length - scores.length - pugh.length,
@@ -409,7 +419,17 @@ export function validateInvite(raw: unknown): Invite {
     settings.scoring === 'open'
       ? cleanGroupResult(get(raw, 'result'), new Set(decision.options.map((o) => o.id)), new Set(decision.factors.map((f) => f.id)), decision.settings)
       : undefined;
-  return { decision, settings, inviteId, ...(organizerName && { organizerName }), ...(result && { result }) };
+  const key = cleanKey(get(raw, 'key'));
+  const sig = cleanKey(get(raw, 'sig'));
+  return {
+    decision,
+    settings,
+    inviteId,
+    ...(organizerName && { organizerName }),
+    ...(result && { result }),
+    ...(key && { key }),
+    ...(sig && { sig }),
+  };
 }
 
 /** The group data kept with a decision on this device. Only ever read from the owner's own storage and backups. */
@@ -428,6 +448,8 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
     if (!sourceId || !voterId || !inviteId) return undefined;
     const sentAt = get(v, 'sentAt') === undefined ? undefined : cleanDate(get(v, 'sentAt'), new Date().toISOString());
     const organizerName = settings.anonymity === 'named' ? cleanText(get(v, 'organizerName'), T.author) : '';
+    const organizerKey = cleanKey(get(v, 'organizerKey'));
+    const key = cleanKey(get(v, 'key'));
     return {
       role,
       settings,
@@ -441,6 +463,9 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
       revision: intIn(get(v, 'revision'), 0, LIMITS.revision) ?? 0,
       ...(sentAt && { sentAt }),
       ...(organizerName && { organizerName }),
+      ...(organizerKey && { organizerKey }),
+      ...(organizerKey && get(v, 'organizerConfirmed') === true && { organizerConfirmed: true }),
+      ...(key && { key }),
       ...(result && { result }),
     };
   }
@@ -461,9 +486,12 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
       ...matched,
       included: get(item, 'included') !== false,
       receivedAt: cleanDate(get(item, 'receivedAt'), matched.createdAt),
+      // Recorded by this device when the signature checked out on arrival; it is read back only from the owner's own storage.
+      ...(matched.key && get(item, 'signed') === true && { signed: true }),
     });
   }
   const ballots = [...byVoter.values()];
+  const confirmed = settings.anonymity === 'named' ? [...new Set(list(get(v, 'confirmed'), LIMITS.ballots, 'keys').flatMap((k) => cleanKey(k) ?? []))] : [];
   return {
     role,
     settings,
@@ -472,6 +500,7 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
     includeOwn: get(v, 'includeOwn') !== false,
     anonymityLocked: get(v, 'anonymityLocked') === true || ballots.length > 0,
     ...(myName && { myName }),
+    ...(confirmed.length > 0 && { confirmed }),
   };
 }
 

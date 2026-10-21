@@ -29,8 +29,11 @@ export function adopt(d: Decision, lang: string, restore = false): Decision {
   return { ...rest, ...(restore && group && { group }), id: newId(), lang: d.lang || lang, createdAt: now, updatedAt: now };
 }
 
-/** A participant's own copy of an invite: their scores go here, and their ballot is made from it. */
-export function joinInvite(invite: Invite, lang: string): Decision {
+/**
+ * A participant's own copy of an invite: their scores go here, and their ballot is made from it.
+ * `signed`: the invite's signature checked out, so its key is kept to recognize the organizer by.
+ */
+export function joinInvite(invite: Invite, lang: string, signed = false): Decision {
   const now = new Date().toISOString();
   const d = invite.decision;
   return {
@@ -54,6 +57,7 @@ export function joinInvite(invite: Invite, lang: string): Decision {
       voterId: newId(22),
       revision: 0,
       ...(invite.organizerName && { organizerName: invite.organizerName }),
+      ...(signed && invite.key && { organizerKey: invite.key }),
       ...(invite.result && { result: invite.result }),
     },
   };

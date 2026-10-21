@@ -8,8 +8,8 @@ import { addBallots, setBallotIncluded, setIncludeOwn } from '../src/app/edit';
 import { combine, combineVoters, computeResults, disagreements, groupView, reviewBallots, spreadLevel } from '../src/engine';
 import { joinInvite } from '../src/format/create';
 import { ballotEnvelope, inviteEnvelope, resultsEnvelope } from '../src/format/share';
-import type { Decision } from '../src/format/types';
-import { ballotFrom, groupDecision, participantCopy } from './fixtures';
+import type { Ballot, Decision } from '../src/format/types';
+import { ballotFrom, groupDecision, participantCopy, unsigned } from './fixtures';
 
 const root = new URL('..', import.meta.url).pathname;
 const schema = JSON.parse(readFileSync(join(root, 'schema/doocide-v1.schema.json'), 'utf8'));
@@ -28,7 +28,7 @@ describe('combining ballots', () => {
   });
 
   it('gives back one ballot exactly as it was scored', () => {
-    const d = addBallots([ballotFrom(facilitator(), 'v1', 7)])(facilitator());
+    const d = addBallots(unsigned(ballotFrom(facilitator(), 'v1', 7)))(facilitator());
     const view = groupView(d)!;
     expect(view.result.ballots).toBe(1);
     expect(view.merged.scores.every((s) => s.value === 7)).toBe(true);
@@ -38,13 +38,13 @@ describe('combining ballots', () => {
   it("doesn't count a skipped cell as zero", () => {
     const base = facilitator();
     const partial = ballotFrom(base, 'v2', 9, { scores: [{ optionId: 'a', factorId: 'price', value: 9 }] });
-    const d = addBallots([ballotFrom(base, 'v1', 3), partial])(base);
+    const d = addBallots(unsigned(ballotFrom(base, 'v1', 3), partial))(base);
     expect(cell(d, 'a', 'price')).toMatchObject({ n: 2, value: 6 });
     expect(cell(d, 'b', 'price')).toMatchObject({ n: 1, value: 3 });
   });
 
   it('lets one outlier move the average but not the median', () => {
-    const ballots = (d: Decision) => [ballotFrom(d, 'v1', 6), ballotFrom(d, 'v2', 6), ballotFrom(d, 'v3', 0)];
+    const ballots = (d: Decision) => unsigned(ballotFrom(d, 'v1', 6), ballotFrom(d, 'v2', 6), ballotFrom(d, 'v3', 0));
     const mean = facilitator({ combine: 'mean' });
     const median = facilitator({ combine: 'median' });
     expect(cell(addBallots(ballots(mean))(mean), 'a', 'price')!.value).toBe(4);
@@ -55,7 +55,7 @@ describe('combining ballots', () => {
     const base = setIncludeOwn(false)(groupDecision({}, { settings: { mode: 'pugh', scaleMax: 10, pughSteps: 1, baselineId: 'a' } }));
     const rating = (voterId: string, value: number) =>
       ballotFrom(base, voterId, 0, { scores: [], pugh: [{ optionId: 'b', factorId: 'price', value }] });
-    const d = addBallots([rating('v1', 1), rating('v2', 1), rating('v3', -1)])(base);
+    const d = addBallots(unsigned(rating('v1', 1), rating('v2', 1), rating('v3', -1)))(base);
     expect(cell(d, 'b', 'price')!.value).toBeCloseTo(0.333, 3);
     // Combined values keep 3 decimals: 0.333 × weight 5.
     expect(computeResults(groupView(d)!.merged).byOption.get('b')!.total).toBeCloseTo(1.665, 3);
@@ -64,7 +64,7 @@ describe('combining ballots', () => {
   it('combines importance when everyone sets it', () => {
     const base = facilitator({ weights: 'everyone' });
     const withWeight = (voterId: string, weight: number) => ballotFrom(base, voterId, 5, { weights: [{ factorId: 'looks', weight }] });
-    const d = addBallots([withWeight('v1', 5), withWeight('v2', 3)])(base);
+    const d = addBallots(unsigned(withWeight('v1', 5), withWeight('v2', 3)))(base);
     const merged = groupView(d)!.merged;
     expect(merged.factors.find((f) => f.id === 'looks')!.weight).toBe(4);
     // A ballot without a weight for a factor falls back to the organizer's.
@@ -72,7 +72,7 @@ describe('combining ballots', () => {
   });
 
   it('counts the organizer only when they scored and chose to count', () => {
-    const d = addBallots([ballotFrom(groupDecision(), 'v1', 1)])(groupDecision());
+    const d = addBallots(unsigned(ballotFrom(groupDecision(), 'v1', 1)))(groupDecision());
     expect(groupView(d)!.result.ballots).toBe(2);
     expect(groupView(setIncludeOwn(false)(d))!.result.ballots).toBe(1);
     expect(groupView(setBallotIncluded('v1', false)(setIncludeOwn(false)(d)))).toBeNull();
@@ -82,8 +82,8 @@ describe('combining ballots', () => {
 describe('where the group disagrees', () => {
   it('measures spread from 0 (everyone agrees) to 1 (split between the ends)', () => {
     const base = facilitator();
-    const agree = addBallots([ballotFrom(base, 'v1', 6), ballotFrom(base, 'v2', 6)])(base);
-    const split = addBallots([ballotFrom(base, 'v1', 0), ballotFrom(base, 'v2', 10)])(base);
+    const agree = addBallots(unsigned(ballotFrom(base, 'v1', 6), ballotFrom(base, 'v2', 6)))(base);
+    const split = addBallots(unsigned(ballotFrom(base, 'v1', 0), ballotFrom(base, 'v2', 10)))(base);
     expect(cell(agree, 'a', 'price')!.spread).toBe(0);
     expect(cell(split, 'a', 'price')!.spread).toBe(1);
     expect(spreadLevel(1)).toBe(2);
@@ -96,10 +96,10 @@ describe('where the group disagrees', () => {
       { optionId: 'a', factorId: 'price', value: a },
       { optionId: 'b', factorId: 'price', value: b },
     ];
-    const d = addBallots([ballotFrom(base, 'v1', 0, { scores: scores(0, 5) }), ballotFrom(base, 'v2', 0, { scores: scores(10, 7) })])(base);
+    const d = addBallots(unsigned(ballotFrom(base, 'v1', 0, { scores: scores(0, 5) }), ballotFrom(base, 'v2', 0, { scores: scores(10, 7) })))(base);
     const list = disagreements(groupView(d)!.result);
     expect(list.map((c) => c.optionId)).toEqual(['a', 'b']);
-    const one = addBallots([ballotFrom(base, 'v1', 0, { scores: scores(0, 10) })])(base);
+    const one = addBallots(unsigned(ballotFrom(base, 'v1', 0, { scores: scores(0, 10) })))(base);
     expect(disagreements(groupView(one)!.result)).toEqual([]);
   });
 
@@ -113,35 +113,35 @@ describe('where the group disagrees', () => {
 describe('approving ballots', () => {
   it('replaces an earlier ballot from the same person with a newer one, and keeps it left out if it was', () => {
     const base = facilitator();
-    const first = addBallots([ballotFrom(base, 'v1', 2)])(base);
+    const first = addBallots(unsigned(ballotFrom(base, 'v1', 2)))(base);
     const excluded = setBallotIncluded('v1', false)(first);
-    const updated = addBallots([ballotFrom(base, 'v1', 9, { revision: 2 })])(excluded);
+    const updated = addBallots(unsigned(ballotFrom(base, 'v1', 9, { revision: 2 })))(excluded);
     expect(updated.group!.ballots).toHaveLength(1);
     expect(updated.group!.ballots[0]!.scores[0]!.value).toBe(9);
     expect(updated.group!.ballots[0]!.included).toBe(false);
     // An older one changes nothing.
-    expect(addBallots([ballotFrom(base, 'v1', 1, { revision: 1 })])(updated)).toBe(updated);
+    expect(addBallots(unsigned(ballotFrom(base, 'v1', 1, { revision: 1 })))(updated)).toBe(updated);
   });
 
   it('refuses ballots meant for another decision', () => {
     const base = facilitator();
-    expect(addBallots([ballotFrom(base, 'v1', 2, { decisionId: 'other', inviteId: 'other' })])(base)).toBe(base);
+    expect(addBallots(unsigned(ballotFrom(base, 'v1', 2, { decisionId: 'other', inviteId: 'other' })))(base)).toBe(base);
   });
 });
 
 describe('checks before approval', () => {
-  const kinds = (d: Decision, ...ballots: Parameters<typeof reviewBallots>[1]) => reviewBallots(d, ballots).map((r) => r.flags.map((f) => f.kind));
+  const kinds = (d: Decision, ...ballots: Ballot[]) => reviewBallots(d, unsigned(...ballots)).map((r) => r.flags.map((f) => f.kind));
 
   it('flags a newer ballot from someone who already sent one, and an outdated one', () => {
-    const d = addBallots([ballotFrom(facilitator(), 'v1', 2, { revision: 2 })])(facilitator());
+    const d = addBallots(unsigned(ballotFrom(facilitator(), 'v1', 2, { revision: 2 })))(facilitator());
     expect(kinds(d, ballotFrom(d, 'v1', 3, { revision: 3 }))[0]).toContain('replaces');
-    const old = reviewBallots(d, [ballotFrom(d, 'v1', 3, { revision: 1 })])[0]!;
+    const old = reviewBallots(d, unsigned(ballotFrom(d, 'v1', 3, { revision: 1 })))[0]!;
     expect(old.flags.map((f) => f.kind)).toContain('outdated');
     expect(old.adds).toBe(false);
   });
 
   it('flags copies, repeated names and more ballots than expected', () => {
-    const named = addBallots([ballotFrom(facilitator({ anonymity: 'named', expected: 1 }), 'v1', 4, { author: 'Person A' })])(
+    const named = addBallots(unsigned(ballotFrom(facilitator({ anonymity: 'named', expected: 1 }), 'v1', 4, { author: 'Person A' })))(
       facilitator({ anonymity: 'named', expected: 1 }),
     );
     const flags = kinds(named, ballotFrom(named, 'v2', 4, { author: 'person a' }))[0]!;
@@ -165,12 +165,12 @@ describe('the whole round trip', () => {
     expect(copy.id).not.toBe(organizer.id);
     expect(copy.group).toMatchObject({ role: 'participant', sourceId: organizer.id, inviteId: 'invite1', revision: 0 });
     const scored = participantCopy(organizer, [{ optionId: 'c', factorId: 'safety', value: 10 }]);
-    const approved = addBallots([ballotEnvelope(scored).data])(organizer);
+    const approved = addBallots(unsigned(ballotEnvelope(scored).data))(organizer);
     expect(cell(approved, 'c', 'safety')).toMatchObject({ n: 1, value: 10 });
   });
 
   it('every group file matches the published schema', () => {
-    const organizer = addBallots([ballotFrom(groupDecision({ scoring: 'open', weights: 'everyone' }), 'v1', 4)])(groupDecision({ scoring: 'open', weights: 'everyone' }));
+    const organizer = addBallots(unsigned(ballotFrom(groupDecision({ scoring: 'open', weights: 'everyone' }), 'v1', 4)))(groupDecision({ scoring: 'open', weights: 'everyone' }));
     const result = groupView(organizer)!.result;
     const files = [inviteEnvelope(organizer, result), ballotEnvelope(participantCopy(groupDecision({ weights: 'everyone' }))), resultsEnvelope(organizer, result)];
     for (const env of files) expect(validateSchema(JSON.parse(JSON.stringify(env))), JSON.stringify(validateSchema.errors)).toBe(true);

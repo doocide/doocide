@@ -4,7 +4,7 @@
 
 import { useMemo, useState } from 'react';
 import { reviewBallots, type BallotFlag } from '../engine';
-import type { Ballot, Decision, Note } from '../format/types';
+import type { Ballot, Decision, Note, ReceivedBallot } from '../format/types';
 import { formatDate, t, useLang } from '../i18n';
 import { formatValue } from './controls';
 import { decisionTitle, factorName, optionName } from './labels';
@@ -16,6 +16,12 @@ function flagText(f: BallotFlag): string {
       return t('review.flagReplaces');
     case 'outdated':
       return t('review.flagOutdated');
+    case 'badSignature':
+      return t('review.flagBadSignature');
+    case 'keyChanged':
+      return t('review.flagKeyChanged');
+    case 'unsigned':
+      return t('review.flagUnsigned');
     case 'copy':
       return t('review.flagCopy');
     case 'sameName':
@@ -34,7 +40,7 @@ function flagText(f: BallotFlag): string {
 }
 
 /** Flags that only inform, as opposed to ones worth a second look. */
-const INFO = new Set<BallotFlag['kind']>(['replaces', 'otherRound', 'nameRemoved', 'missing']);
+const INFO = new Set<BallotFlag['kind']>(['replaces', 'otherRound', 'nameRemoved', 'missing', 'unsigned']);
 
 export function BallotTable({ d, ballot, uiLang }: { d: Decision; ballot: Pick<Ballot, 'scores' | 'pugh' | 'weights'>; uiLang: string }) {
   const pugh = d.settings.mode === 'pugh';
@@ -84,10 +90,10 @@ export function noteTarget(d: Decision, n: Pick<Note, 'optionId' | 'factorId'>, 
 
 interface Props {
   d: Decision;
-  ballots: Ballot[];
+  ballots: ReceivedBallot[];
   /** Files picked along with the ballots that weren't ballots for this decision. */
   skipped: number;
-  onApprove: (ballots: Ballot[]) => void;
+  onApprove: (ballots: ReceivedBallot[]) => void;
   onDiscard: () => void;
 }
 
@@ -97,7 +103,9 @@ export function BallotReview({ d, ballots, skipped, onApprove, onDiscard }: Prop
   const [chosen, setChosen] = useState<Set<number>>(() => new Set(reviews.flatMap((r, i) => (r.adds ? [i] : []))));
   const many = reviews.length > 1;
   const named = d.group?.settings.anonymity === 'named';
-  const picked = reviews.filter((r, i) => r.adds && chosen.has(i)).map((r) => r.ballot);
+  const picked = reviews.filter((r, i) => r.adds && chosen.has(i)).map((r) => ({ ballot: r.ballot, signature: r.signature }));
+  // Verified only when the signature checked out and its key is one the organizer already confirmed.
+  const verified = (b: Ballot, signature: ReceivedBallot['signature']) => signature === 'valid' && Boolean(b.key && d.group?.confirmed?.includes(b.key));
 
   const toggle = (i: number) =>
     setChosen((prev) => {
@@ -149,7 +157,12 @@ export function BallotReview({ d, ballots, skipped, onApprove, onDiscard }: Prop
                 <p className="ballot-from">
                   {r.ballot.author ? (
                     <>
-                      {t('review.from')} <bdi className="author">{r.ballot.author}</bdi> <span className="muted small">{t('review.selfDeclared')}</span>
+                      {t('review.from')} <bdi className="author">{r.ballot.author}</bdi>{' '}
+                      {verified(r.ballot, r.signature) ? (
+                        <span className="badge verified">{t('ballots.verified')}</span>
+                      ) : (
+                        <span className="muted small">{t('review.selfDeclared')}</span>
+                      )}
                     </>
                   ) : (
                     <strong>{named ? t('review.noName') : t('review.anonymous')}</strong>

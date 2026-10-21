@@ -34,6 +34,16 @@ describe('source rules', () => {
     expect(filesMatching(/\bfetch\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon/)).toEqual(['src/app/net.ts']);
   });
 
+  it('uses WebCrypto in one place only, and no other crypto library', () => {
+    expect(filesMatching(/crypto\.subtle/)).toEqual(['src/format/crypto.ts']);
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+    expect(Object.keys(pkg.dependencies)).toEqual(['react', 'react-dom']);
+  });
+
+  it('never derives one key from another (decision keys are always generated fresh)', () => {
+    expect(filesMatching(/deriveKey|deriveBits/)).toEqual([]);
+  });
+
   it('keeps localStorage for preferences only', () => {
     expect(filesMatching(/localStorage|sessionStorage/)).toEqual(['src/app/prefs.ts']);
   });

@@ -252,6 +252,12 @@ describe('invites and ballots from others', () => {
     expect(JSON.stringify(b)).not.toContain(NAME_MARKER);
   });
 
+  it('drops malformed keys and signatures instead of passing them on', () => {
+    const b = validateBallot({ ...ballotFrom(groupDecision(), 'voterA', 5), key: 'not/base64', sig: 'x'.repeat(500) });
+    expect(b.key).toBeUndefined();
+    expect(b.sig).toBeUndefined();
+  });
+
   it('caps the size of a ballot', () => {
     const scores = Array.from({ length: LIMITS.scores + 1 }, () => ({ optionId: 'a', factorId: 'price', value: 1 }));
     expect(err(() => validateBallot({ ...ballotFrom(groupDecision(), 'voterA', 5), scores }))).toBe('too-big');

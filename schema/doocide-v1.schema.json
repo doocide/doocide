@@ -31,6 +31,12 @@
   "definitions": {
     "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
     "date": { "type": "string", "maxLength": 40, "description": "ISO 8601 date and time." },
+    "publicKey": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,120}$", "description": "An ECDSA P-256 public key, raw, base64url." },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,120}$",
+      "description": "ECDSA P-256 with SHA-256, base64url, over the canonical JSON (keys sorted) of the data without this field."
+    },
     "translations": {
       "type": "object",
       "description": "Optional translations keyed by language code, e.g. {\"ro\": {\"name\": \"Preț\"}}.",
@@ -235,7 +241,9 @@
         "settings": { "$ref": "#/definitions/groupSettings" },
         "inviteId": { "$ref": "#/definitions/id" },
         "organizerName": { "type": "string", "maxLength": 80, "description": "Named groups only. Self-declared, never verified." },
-        "result": { "$ref": "#/definitions/groupResult", "description": "Open scoring only." }
+        "result": { "$ref": "#/definitions/groupResult", "description": "Open scoring only." },
+        "key": { "$ref": "#/definitions/publicKey", "description": "The organizer's device key." },
+        "sig": { "$ref": "#/definitions/signature" }
       },
       "additionalProperties": false
     },
@@ -249,6 +257,11 @@
         "revision": { "type": "integer", "minimum": 1, "description": "Goes up each time the person sends their ballot again." },
         "createdAt": { "$ref": "#/definitions/date", "description": "Without an author, the date only (midnight)." },
         "author": { "type": "string", "maxLength": 80, "description": "Named groups only. Self-declared, never verified. Absent in anonymous ballots." },
+        "key": {
+          "$ref": "#/definitions/publicKey",
+          "description": "Anonymous ballots: a key made for this one decision. Named ballots: the sender's device key. A later ballot from the same voterId must be signed by the same key."
+        },
+        "sig": { "$ref": "#/definitions/signature" },
         "scores": { "type": "array", "maxItems": 30000, "items": { "$ref": "#/definitions/score" } },
         "pugh": { "type": "array", "maxItems": 30000, "items": { "$ref": "#/definitions/score" } },
         "weights": {

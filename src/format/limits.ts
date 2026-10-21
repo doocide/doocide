@@ -34,5 +34,7 @@ export const LIMITS = {
     url: 2_000,
     note: 4_000,
     author: 80,
+    /** A public key or a signature, base64url. P-256: 87 and 86 characters. */
+    key: 120,
   },
 } as const;

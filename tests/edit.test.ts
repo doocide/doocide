@@ -13,7 +13,7 @@ import {
   setWeight,
   tidyNames,
 } from '../src/app/edit';
-import { ballotFrom, groupDecision, participantCopy, sampleDecision } from './fixtures';
+import { ballotFrom, groupDecision, participantCopy, sampleDecision, unsigned } from './fixtures';
 
 describe('edits', () => {
   it('removing an option removes its scores, facts, notes and baseline role', () => {
@@ -64,7 +64,7 @@ describe('group locks', () => {
   it('scoring rules lock once ballots exist', () => {
     const d = groupDecision();
     expect(setSettings({ scaleMax: 5 })(d).settings.scaleMax).toBe(5);
-    const withBallot = addBallots([ballotFrom(d, 'v1', 5)])(d);
+    const withBallot = addBallots(unsigned(ballotFrom(d, 'v1', 5)))(d);
     expect(setSettings({ scaleMax: 5 })(withBallot)).toBe(withBallot);
     expect(setSettings({ mode: 'pugh' })(withBallot)).toBe(withBallot);
   });

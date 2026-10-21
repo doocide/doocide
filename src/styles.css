@@ -1925,6 +1925,29 @@ input[type='range'].unset {
   font-weight: 700;
 }
 
+/* Verified by comparing short codes */
+.badge.verified {
+  background: var(--good-soft);
+  color: var(--good);
+  border: 0;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+/* A short code to read aloud: big, monospaced digits. */
+.code {
+  font-family: ui-monospace, monospace;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+  padding: 14px;
+  margin: 12px 0;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  direction: ltr;
+}
+
 /* Reviewing incoming ballots */
 
 .review {

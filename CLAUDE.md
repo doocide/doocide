@@ -8,7 +8,9 @@ Milestone 1 released as v0.1.0 (2026-10-20), live at https://doocide.github.io: 
 
 Milestone 2a released as v0.2.0 (2026-10-20), live at https://doocide.github.io: invites and ballots by link or file, organizer approval, anonymous or named ballots (locked after the first ballot), blind or open scoring, combined results (average or median), a disagreement list, and a group results share.
 
-Next: the rest of milestone 2 in order: 2b signatures and short-code verification, 2c passphrase and sealed encryption plus the optional library lock, 2d collecting ballots through a synced cloud folder. Then milestone 3 (AI copy-prompt and MCP, public sharing, room mode with QR codes, decision journal, ~35 languages).
+Milestone 2b released as v0.3.0 (2026-10-21): signed invites and ballots (a device key for invites and named ballots, a fresh key per decision for anonymous ones), bad signatures refused, a person's later ballots held to the same key, and 12-digit short codes compared aloud to mark named ballots as verified.
+
+Next: the rest of milestone 2 in order: 2c passphrase and sealed encryption plus the optional library lock, 2d collecting ballots through a synced cloud folder. Then milestone 3 (AI copy-prompt and MCP, public sharing, room mode with QR codes, decision journal, ~35 languages).
 
 ## Stack and commands
 
@@ -21,15 +23,15 @@ React 19 + TypeScript 7 + Vite 8, built into one HTML file (vite-plugin-singlefi
 
 ## Layout and licenses
 
-- `src/format/` (MIT): file format, checks (`validate.ts`), cleaning (`sanitize.ts`), links (`codec.ts`), the only share path (`share.ts`), tables and CSV.
+- `src/format/` (MIT): file format, checks (`validate.ts`), cleaning (`sanitize.ts`), links (`codec.ts`), the only share path (`share.ts`), signatures and short codes (`crypto.ts`, the only file allowed to use `crypto.subtle`), tables and CSV.
 - `src/engine/` (MIT): scoring and sensitivity ("what flips the winner").
-- `src/app/` (AGPL): the UI. `net.ts` is the only file allowed to call `fetch`; `prefs.ts` the only one allowed to use localStorage.
+- `src/app/` (AGPL): the UI. `net.ts` is the only file allowed to call `fetch`; `prefs.ts` the only one allowed to use localStorage; `keys.ts` picks and keeps signing keys (non-extractable, in IndexedDB).
 - `src/i18n/`: language system; packs in `src/i18n/locales/*.json`, list in `languages.ts`.
 - `src/packs/`: `remote.ts` (online, fetch packs on demand) or `embedded.ts` (offline build), chosen by Vite alias `@packs`.
 - `tools/`: build plugins (security policy hashes, static packs).
 - `schema/` (MIT): JSON Schema. `templates/` (CC0): starter templates.
 - `docs/assets/`: README logo and screenshots. The example decision `summer-trip.doocide` drives the README's example link and every screenshot; when the UI changes visibly, refresh them with `sandbox/maintainer/screenshots.md` (local, gitignored) and `node tools/demo-link.mjs --update-readme`.
-- `tests/`: `privacy.test.ts` and `input.test.ts` enforce the never-lists below; `group.test.ts` checks merging and the ballot checks; `build.test.ts` checks the built pages.
+- `tests/`: `privacy.test.ts` and `input.test.ts` enforce the never-lists below; `group.test.ts` checks merging and the ballot checks; `crypto.test.ts` checks signatures and short codes; `build.test.ts` checks the built pages.
 
 The app is AGPL-3.0-or-later. The file format, schema, templates and scoring engine are MIT or CC0, so other tools can adopt them.
 

@@ -4,7 +4,8 @@
 import { newId } from '../format/ids';
 import { LIMITS } from '../format/limits';
 import { checkLink, cleanText } from '../format/sanitize';
-import type { Ballot, Decision, GroupSettings, Invite, Note, Score, Settings, StoredBallot, Visibility } from '../format/types';
+import { signatureAllows } from '../engine/ballots';
+import type { Decision, GroupSettings, Invite, Note, ReceivedBallot, Score, Settings, StoredBallot, Visibility } from '../format/types';
 import { WEIGHT_MAX, WEIGHT_MIN } from '../format/types';
 import { matchBallot } from '../format/validate';
 
@@ -247,22 +248,25 @@ export const endGroup: Edit = (d) => {
 
 /**
  * The organizer's approval, and the only way a ballot gets into a decision. Each ballot is fitted to
- * the decision again (names removed in anonymous groups), and a newer ballot from the same person
- * replaces their earlier one.
+ * the decision again (names removed in anonymous groups). A newer ballot from the same person replaces
+ * their earlier one, but only if it's signed by the same key when the earlier one was signed. A ballot
+ * whose signature doesn't check out never gets in.
  */
-export const addBallots = (ballots: Ballot[]): Edit => (d) => {
+export const addBallots = (received: ReceivedBallot[]): Edit => (d) => {
   const g = d.group;
   if (g?.role !== 'organizer') return d;
   const byVoter = new Map<string, StoredBallot>(g.ballots.map((b) => [b.voterId, b]));
   const now = new Date().toISOString();
   let changed = false;
-  for (const raw of ballots) {
+  for (const r of received) {
+    const raw = r.ballot;
     if (raw.decisionId !== d.id && raw.inviteId !== g.inviteId) continue;
+    const prev = byVoter.get(raw.voterId);
+    if (signatureAllows(prev, r) !== 'ok') continue;
     const b = matchBallot(raw, d).ballot;
-    const prev = byVoter.get(b.voterId);
     if (prev && prev.revision >= b.revision) continue;
     if (!prev && byVoter.size >= LIMITS.ballots) continue;
-    byVoter.set(b.voterId, { ...b, included: prev ? prev.included : true, receivedAt: now });
+    byVoter.set(b.voterId, { ...b, included: prev ? prev.included : true, receivedAt: now, ...(r.signature === 'valid' && b.key && { signed: true }) });
     changed = true;
   }
   if (!changed) return d;
@@ -281,6 +285,36 @@ export const removeBallot = (voterId: string): Edit => (d) => {
   return touch({ ...d, group: { ...g, ballots: g.ballots.filter((b) => b.voterId !== voterId) } });
 };
 
+/** Organizer, named groups: the codes matched, so ballots signed with this key show as verified. */
+export const confirmKey = (key: string): Edit => (d) => {
+  const g = d.group;
+  if (g?.role !== 'organizer' || g.settings.anonymity !== 'named' || g.confirmed?.includes(key)) return d;
+  return touch({ ...d, group: { ...g, confirmed: [...(g.confirmed ?? []), key] } });
+};
+
+export const unconfirmKey = (key: string): Edit => (d) => {
+  const g = d.group;
+  if (g?.role !== 'organizer' || !g.confirmed?.includes(key)) return d;
+  return touch({ ...d, group: { ...g, confirmed: g.confirmed.filter((k) => k !== key) } });
+};
+
+/** Participant: the organizer's code matched the one on the invite. */
+export const confirmOrganizer: Edit = (d) =>
+  d.group?.role === 'participant' && d.group.organizerKey && !d.group.organizerConfirmed
+    ? touch({ ...d, group: { ...d.group, organizerConfirmed: true } })
+    : d;
+
+/**
+ * Participant: this device can't sign as the person who sent the earlier ballot (a copy restored on
+ * another device, say), so the next ballot goes out as a new person rather than one the organizer would refuse.
+ */
+export const restartVoter: Edit = (d) => {
+  const g = d.group;
+  if (g?.role !== 'participant') return d;
+  const { sentAt: _sentAt, key: _key, ...rest } = g;
+  return touch({ ...d, group: { ...rest, voterId: newId(22), revision: 0 } });
+};
+
 export const setIncludeOwn = (includeOwn: boolean): Edit => (d) =>
   d.group?.role === 'organizer' ? touch({ ...d, group: { ...d.group, includeOwn } }) : d;
 
@@ -289,9 +323,11 @@ export const setIncludeOwn = (includeOwn: boolean): Edit => (d) =>
  * follow the invite; their own scores and notes stay wherever the cells still exist. Anonymity stays
  * as it was when they joined: their ballots were made under that promise.
  */
-export const refreshFromInvite = (invite: Invite): Edit => (d) => {
+export const refreshFromInvite = (invite: Invite, signed: boolean): Edit => (d) => {
   const g = d.group;
   if (g?.role !== 'participant' || g.sourceId !== invite.decision.id) return d;
+  // Once an invite came signed, only invites signed by that same key may change this copy.
+  if (g.organizerKey && (!signed || invite.key !== g.organizerKey)) return d;
   const inv = invite.decision;
   const optionIds = new Set(inv.options.map((o) => o.id));
   const factorIds = new Set(inv.factors.map((f) => f.id));
@@ -315,7 +351,12 @@ export const refreshFromInvite = (invite: Invite): Edit => (d) => {
       .filter((s) => keep(s) && s.optionId !== inv.settings.baselineId)
       .map((s) => ({ ...s, value: Math.max(-steps, Math.min(steps, s.value)) })),
     notes: d.notes.filter((n) => (!n.optionId || optionIds.has(n.optionId)) && (!n.factorId || factorIds.has(n.factorId))),
-    group: { ...kept, settings: { ...invite.settings, anonymity: g.settings.anonymity }, ...(invite.result && { result: invite.result }) },
+    group: {
+      ...kept,
+      settings: { ...invite.settings, anonymity: g.settings.anonymity },
+      ...(invite.result && { result: invite.result }),
+      ...(!g.organizerKey && signed && invite.key && { organizerKey: invite.key }),
+    },
   });
 };
 

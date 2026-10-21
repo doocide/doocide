@@ -1,6 +1,6 @@
 import { joinInvite } from '../src/format/create';
 import { inviteEnvelope } from '../src/format/share';
-import type { Ballot, Decision, GroupSettings, Score } from '../src/format/types';
+import type { Ballot, Decision, GroupSettings, ReceivedBallot, Score } from '../src/format/types';
 
 export const PRIVATE_MARKER = 'PRIVATE-7f3a-do-not-share';
 export const SHARED_MARKER = 'SHARED-91bc';
@@ -121,3 +121,6 @@ export function ballotFrom(organizer: Decision, voterId: string, value: number, 
     ...extra,
   };
 }
+
+/** Ballots as they arrive without a signature, the way Doocide 0.2.0 sent them. */
+export const unsigned = (...ballots: Ballot[]): ReceivedBallot[] => ballots.map((ballot) => ({ ballot, signature: 'none' }));

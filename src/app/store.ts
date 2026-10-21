@@ -6,30 +6,78 @@ import { validateDecision } from '../format/validate';
 
 const DB = 'doocide';
 const STORE = 'decisions';
+/** Signing keys (see keys.ts). Private keys are kept as non-extractable CryptoKeys, never as text. */
+const KEYS = 'keys';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 const memory = new Map<string, Decision>();
+const memoryKeys = new Map<string, KeyRecord>();
 let persistent = true;
 
 function open(): Promise<IDBDatabase> {
   dbPromise ??= new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: 'id' });
+    // Version 2 added the keys store.
+    const req = indexedDB.open(DB, 2);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(KEYS)) db.createObjectStore(KEYS, { keyPath: 'id' });
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
   return dbPromise;
 }
 
-function run<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+function run<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequest<T>, name = STORE): Promise<T> {
   return open().then(
     (db) =>
       new Promise<T>((resolve, reject) => {
-        const req = fn(db.transaction(STORE, mode).objectStore(STORE));
+        const req = fn(db.transaction(name, mode).objectStore(name));
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
       }),
   );
+}
+
+/** A signing key kept on this device. `id` is "device" or "decision:<decision id>". */
+export interface KeyRecord {
+  id: string;
+  privateKey: CryptoKey;
+  publicKey: string;
+  createdAt: string;
+}
+
+export async function getKey(id: string): Promise<KeyRecord | undefined> {
+  if (persistent) {
+    try {
+      const row = await run<KeyRecord | undefined>('readonly', (s) => s.get(id), KEYS);
+      if (row) return row;
+    } catch {
+      persistent = false;
+    }
+  }
+  return memoryKeys.get(id);
+}
+
+export async function putKey(record: KeyRecord): Promise<void> {
+  memoryKeys.set(record.id, record);
+  if (!persistent) return;
+  try {
+    await run('readwrite', (s) => s.put(record), KEYS);
+  } catch {
+    persistent = false;
+  }
+}
+
+export async function deleteKey(id: string): Promise<void> {
+  memoryKeys.delete(id);
+  if (!persistent) return;
+  try {
+    await run('readwrite', (s) => s.delete(id), KEYS);
+  } catch {
+    persistent = false;
+  }
 }
 
 export const isPersistent = () => persistent;

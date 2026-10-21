@@ -131,6 +131,22 @@ export interface Ballot {
   weights?: Weight[];
   /** Shared notes only, with no author and the date only. */
   notes: Note[];
+  /**
+   * The public key the ballot is signed with (base64url, raw P-256). Anonymous ballots use a key made
+   * for this one decision; named ballots use the person's device key. See src/format/crypto.ts.
+   */
+  key?: string;
+  /** Signature over the rest of the ballot, made with `key`. */
+  sig?: string;
+}
+
+/** What checking a signature found: it matches, it doesn't, or there is none (made with Doocide 0.2.0). */
+export type Signature = 'valid' | 'invalid' | 'none';
+
+/** A ballot as it arrives, with what its signature check found. */
+export interface ReceivedBallot {
+  ballot: Ballot;
+  signature: Signature;
 }
 
 /** A ballot the organizer approved. */
@@ -138,6 +154,8 @@ export interface StoredBallot extends Ballot {
   /** Counts in the group result. The organizer can leave a ballot out without deleting it. */
   included: boolean;
   receivedAt: string;
+  /** Its signature matched `key` when it arrived. Later ballots from this person must be signed by the same key. */
+  signed?: boolean;
 }
 
 export interface Group {
@@ -152,6 +170,8 @@ export interface Group {
   anonymityLocked: boolean;
   /** Name shown with the organizer's invites or on the participant's ballot (named groups only). */
   myName?: string;
+  /** Organizer, named groups: keys the organizer confirmed by comparing short codes with their owner. */
+  confirmed?: string[];
   /** Participant: the organizer's decision id, which the ballot points at. */
   sourceId?: string;
   /** Participant: this person's random id for this decision. */
@@ -161,6 +181,12 @@ export interface Group {
   sentAt?: string;
   /** Participant: the organizer's name from the invite (named groups only, not verified). */
   organizerName?: string;
+  /** Participant: the key that signed the invite. */
+  organizerKey?: string;
+  /** Participant: they compared short codes with the organizer and the codes matched. */
+  organizerConfirmed?: boolean;
+  /** Participant: the public key their ballots were signed with, to notice when this device can't sign as them. */
+  key?: string;
   /** Participant, open scoring: the group's results when the invite was made. */
   result?: GroupResult;
 }
@@ -207,6 +233,9 @@ export interface Invite {
   organizerName?: string;
   /** Open scoring only: the group's combined results so far. */
   result?: GroupResult;
+  /** The organizer's device key, and their signature over the rest of the invite. */
+  key?: string;
+  sig?: string;
 }
 
 /**

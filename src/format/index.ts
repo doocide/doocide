@@ -7,3 +7,4 @@ export * from './share';
 export * from './codec';
 export * from './table';
 export * from './create';
+export * from './crypto';

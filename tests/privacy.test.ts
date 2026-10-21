@@ -1,8 +1,10 @@
 // The never-list in CLAUDE.md, enforced. A failure here is a privacy bug, not a style issue.
 
 import { describe, expect, it } from 'vitest';
-import { addBallots, endGroup, setGroupSettings, startGroup } from '../src/app/edit';
-import { groupView } from '../src/engine';
+import { addBallots, confirmKey, endGroup, setGroupSettings, startGroup } from '../src/app/edit';
+import { ballotKey, deviceKey, forgetDecisionKey } from '../src/app/keys';
+import { ballotStatus, groupView } from '../src/engine';
+import { checkBallot, generateSigner, signBallot } from '../src/format/crypto';
 import { decodePayload, encodePayload, inflateCapped, makeLink, readFragment } from '../src/format/codec';
 import {
   assertShareable,
@@ -19,7 +21,7 @@ import {
 } from '../src/format/share';
 import type { AnyEnvelope, Decision, Envelope } from '../src/format/types';
 import { validateBallot, validateEnvelope } from '../src/format/validate';
-import { NAME_MARKER, PRIVATE_MARKER, SHARED_MARKER, ballotFrom, groupDecision, participantCopy, sampleDecision } from './fixtures';
+import { NAME_MARKER, PRIVATE_MARKER, SHARED_MARKER, ballotFrom, groupDecision, participantCopy, sampleDecision, unsigned } from './fixtures';
 
 const fromBase64Url = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4)), (c) => c.charCodeAt(0));
 
@@ -137,7 +139,7 @@ async function everyForm(env: AnyEnvelope): Promise<string[]> {
 /** An organizer with two approved ballots, ready to share invites and results. */
 function organizerWithBallots(anonymity: 'anonymous' | 'named' = 'anonymous') {
   const d = groupDecision({ anonymity, scoring: 'open' });
-  return addBallots([ballotFrom(d, 'voterA', 4, { author: NAME_MARKER }), ballotFrom(d, 'voterB', 8)])(d);
+  return addBallots(unsigned(ballotFrom(d, 'voterA', 4, { author: NAME_MARKER }), ballotFrom(d, 'voterB', 8)))(d);
 }
 
 describe('groups: private notes and group data never leave the device', () => {
@@ -231,7 +233,7 @@ describe('anonymity and signatures', () => {
   it('a name sent into an anonymous decision is removed before it is stored', () => {
     const d = groupDecision({ anonymity: 'anonymous' });
     const ballot = validateBallot({ ...ballotFrom(d, 'voterA', 5), author: NAME_MARKER, createdAt: '2026-10-20T14:35:12.000Z' });
-    const after = addBallots([ballot])(d);
+    const after = addBallots(unsigned(ballot))(d);
     expect(JSON.stringify(after.group)).not.toContain(NAME_MARKER);
     expect(after.group!.ballots[0]!.createdAt).toBe('2026-10-20T00:00:00.000Z');
   });
@@ -246,7 +248,7 @@ describe('anonymity and signatures', () => {
   it('the anonymity setting cannot change after the first ballot exists', () => {
     const d = groupDecision({ anonymity: 'anonymous' });
     expect(setGroupSettings({ anonymity: 'named' })(d).group!.settings.anonymity).toBe('named');
-    const withBallot = addBallots([ballotFrom(d, 'voterA', 5)])(d);
+    const withBallot = addBallots(unsigned(ballotFrom(d, 'voterA', 5)))(d);
     expect(withBallot.group!.anonymityLocked).toBe(true);
     expect(setGroupSettings({ anonymity: 'named' })(withBallot).group!.settings.anonymity).toBe('anonymous');
     // Not by ending the group and starting over either.
@@ -261,14 +263,57 @@ describe('anonymity and signatures', () => {
     const decoded = await decodePayload(await encodePayload(env));
     expect(decoded.kind).toBe('ballot');
     expect(d.group!.ballots).toEqual([]);
-    const approved = addBallots([env.data])(d);
+    const approved = addBallots(unsigned(env.data))(d);
     expect(approved.group!.ballots).toHaveLength(1);
     // Left out by the organizer: kept, but not counted.
     const leftOut = { ...approved, group: { ...approved.group!, includeOwn: false, ballots: approved.group!.ballots.map((b) => ({ ...b, included: false })) } };
     expect(groupView(leftOut)).toBeNull();
   });
 
-  it.todo('anonymous ballots are signed with a per-decision key that is never reused or derived (milestone 2b)');
-  it.todo('names show as verified only when the signature matches a group-confirmed key (milestone 2b)');
+  it('anonymous ballots are signed with a per-decision key that is never reused or derived', async () => {
+    const one = participantCopy(groupDecision({ anonymity: 'anonymous' }));
+    const two = participantCopy(groupDecision({ anonymity: 'anonymous' }));
+    const [k1, k2, device] = await Promise.all([ballotKey(one), ballotKey(two), deviceKey()]);
+    // A different key for each decision, and never the device key.
+    expect(k1.publicKey).not.toBe(k2.publicKey);
+    expect(k1.publicKey).not.toBe(device.publicKey);
+    expect(k1.privateKey.extractable).toBe(false);
+    // The same key for the same decision, so a re-sent ballot can replace the earlier one.
+    expect((await ballotKey(one)).publicKey).toBe(k1.publicKey);
+    // The ballot carries that decision's key and nothing that points at the device key.
+    const signed = await signBallot(ballotEnvelope(one).data, k1);
+    expect(signed.key).toBe(k1.publicKey);
+    expect(JSON.stringify(signed)).not.toContain(device.publicKey);
+    // Deleting the decision deletes its key: a later key is new, not the old one brought back.
+    await forgetDecisionKey(one.id);
+    expect((await ballotKey(one)).publicKey).not.toBe(k1.publicKey);
+  });
+
+  it('named ballots are signed with the device key, so people can recognize it by its code', async () => {
+    const named = participantCopy(groupDecision({ anonymity: 'named' }));
+    expect((await ballotKey(named)).publicKey).toBe((await deviceKey()).publicKey);
+  });
+
+  it('names show as verified only when the signature matches a group-confirmed key', async () => {
+    const organizer = groupDecision({ anonymity: 'named' });
+    const signer = await generateSigner();
+    const ballot = await signBallot(ballotFrom(organizer, 'v1', 5, { author: 'Person A' }), signer);
+    const signature = await checkBallot(validateBallot(JSON.parse(JSON.stringify(ballot))));
+    expect(signature).toBe('valid');
+
+    const added = addBallots([{ ballot, signature }])(organizer);
+    expect(ballotStatus(added.group!.ballots[0]!, added.group!)).toBe('self-declared');
+    const confirmed = confirmKey(signer.publicKey)(added);
+    expect(ballotStatus(confirmed.group!.ballots[0]!, confirmed.group!)).toBe('verified');
+
+    // A confirmed key on a ballot that wasn't signed is not enough.
+    const unsignedBallot = { ...ballotFrom(organizer, 'v2', 5, { author: 'Person B' }), key: signer.publicKey };
+    const withUnsigned = addBallots(unsigned(unsignedBallot))(confirmed);
+    expect(ballotStatus(withUnsigned.group!.ballots.find((b) => b.voterId === 'v2')!, withUnsigned.group!)).toBe('self-declared');
+
+    // Anonymous groups never show a name as verified, and keys can't be confirmed there.
+    const anonymous = groupDecision({ anonymity: 'anonymous' });
+    expect(confirmKey(signer.publicKey)(anonymous)).toBe(anonymous);
+  });
   it.todo('an invite code is accepted once, and no record links codes to people (milestone 3, room mode)');
 });
