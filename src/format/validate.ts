@@ -1,24 +1,35 @@
-// Turns untrusted JSON into a clean Decision. Only known fields are read, every string is cleaned,
-// every reference is checked, and the result is built from fresh objects (no prototype pollution).
+// Turns untrusted JSON into a clean Decision, Invite or Ballot. Only known fields are read, every
+// string is cleaned, every reference is checked, and the result is built from fresh objects
+// (no prototype pollution).
 
 import { ID_PATTERN, newId } from './ids';
 import { LIMITS } from './limits';
-import { checkLink, cleanText } from './sanitize';
+import { checkLink, cleanText, dayOnly } from './sanitize';
 import {
   FORMAT_VERSION,
   SCALES,
   WEIGHT_MAX,
   WEIGHT_MIN,
+  type AnyEnvelope,
+  type Ballot,
+  type CellResult,
   type Decision,
+  type DecisionKind,
   type Envelope,
   type Fact,
   type Factor,
-  type Kind,
+  type Group,
+  type GroupResult,
+  type GroupSettings,
+  type Invite,
   type Note,
   type Option,
   type Score,
   type Settings,
+  type StoredBallot,
   type Translations,
+  type Weight,
+  type WeightResult,
 } from './types';
 
 export type FormatErrorCode =
@@ -54,6 +65,7 @@ const list = (v: unknown, max: number, what: string): unknown[] => {
 };
 
 const LANG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$/;
+const T = LIMITS.text;
 
 export function cleanLang(v: unknown, fallback = 'en'): string {
   return typeof v === 'string' && v.length <= LIMITS.text.lang && LANG.test(v) ? v : fallback;
@@ -64,6 +76,15 @@ function cleanDate(v: unknown, fallback: string): string {
   const t = Date.parse(v);
   return Number.isFinite(t) ? new Date(t).toISOString() : fallback;
 }
+
+const cleanId = (v: unknown): string | undefined => (typeof v === 'string' && ID_PATTERN.test(v) ? v : undefined);
+
+const intIn = (v: unknown, min: number, max: number): number | undefined =>
+  typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : undefined;
+
+/** A finite number clamped to [min, max] and rounded to 3 decimals, or undefined. */
+const numIn = (v: unknown, min: number, max: number): number | undefined =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.min(max, Math.max(min, v)) * 1000) / 1000 : undefined;
 
 /** Deepest nesting of objects and arrays, scanned without parsing. */
 export function jsonDepth(text: string): number {
@@ -93,11 +114,17 @@ export function parseJsonText(text: string, maxChars: number = LIMITS.unpackedBy
   }
 }
 
+/** A decision, template or backup. Invites and ballots are refused here; see parseAnyEnvelopeText. */
 export function parseEnvelopeText(text: string, maxChars?: number): Envelope {
   return validateEnvelope(parseJsonText(text, maxChars));
 }
 
-export function validateEnvelope(raw: unknown): Envelope {
+/** Any Doocide file: a decision, template, backup, invite or ballot. */
+export function parseAnyEnvelopeText(text: string, maxChars?: number): AnyEnvelope {
+  return validateAnyEnvelope(parseJsonText(text, maxChars));
+}
+
+export function validateAnyEnvelope(raw: unknown): AnyEnvelope {
   if (!isObj(raw)) throw new FormatError('not-doocide');
   const version = get(raw, 'doocide');
   if (typeof version !== 'number') throw new FormatError('not-doocide');
@@ -109,9 +136,21 @@ export function validateEnvelope(raw: unknown): Envelope {
   if (enc !== 'none') throw new FormatError('newer-version');
 
   const kind = get(raw, 'kind');
-  if (kind !== 'decision' && kind !== 'template' && kind !== 'backup') throw new FormatError('invalid', 'Unknown kind');
+  const data = get(raw, 'data');
+  const base = { doocide: FORMAT_VERSION, enc: 'none' } as const;
+  if (kind === 'decision' || kind === 'template' || kind === 'backup') return { ...base, kind, data: validateDecision(data, kind) };
+  if (kind === 'invite') return { ...base, kind, data: validateInvite(data) };
+  if (kind === 'ballot') return { ...base, kind, data: validateBallot(data) };
+  // A kind this version doesn't know is most likely from a newer Doocide.
+  if (typeof kind === 'string') throw new FormatError('newer-version');
+  throw new FormatError('invalid', 'Unknown kind');
+}
 
-  return { doocide: FORMAT_VERSION, kind, enc: 'none', data: validateDecision(get(raw, 'data'), kind) };
+/** A decision, template or backup. */
+export function validateEnvelope(raw: unknown): Envelope {
+  const env = validateAnyEnvelope(raw);
+  if (env.kind === 'invite' || env.kind === 'ballot') throw new FormatError('invalid', 'Not a decision');
+  return env;
 }
 
 function cleanTranslations(v: unknown): Translations | undefined {
@@ -142,8 +181,9 @@ function uniqueId(v: unknown, seen: Set<string>): string {
   return id;
 }
 
-const refId = (v: unknown, valid: Set<string>): string | undefined =>
-  typeof v === 'string' && valid.has(v) ? v : undefined;
+/** A reference to an option or factor. With no set to check against (a ballot read on its own), any well-formed id. */
+const refId = (v: unknown, valid: Set<string> | null): string | undefined =>
+  typeof v !== 'string' ? undefined : valid ? (valid.has(v) ? v : undefined) : cleanId(v);
 
 function cleanSettings(v: unknown, optionIds: Set<string>): Settings {
   const o = isObj(v) ? v : {};
@@ -157,8 +197,8 @@ function cleanSettings(v: unknown, optionIds: Set<string>): Settings {
 
 function cleanScores(
   raw: unknown,
-  optionIds: Set<string>,
-  factorIds: Set<string>,
+  optionIds: Set<string> | null,
+  factorIds: Set<string> | null,
   min: number,
   max: number,
   integer: boolean,
@@ -178,10 +218,266 @@ function cleanScores(
   return [...byCell.values()];
 }
 
-export function validateDecision(raw: unknown, kind: Kind): Decision {
+function cleanNotes(raw: unknown, optionIds: Set<string> | null, factorIds: Set<string> | null, keepPrivate: boolean, now: string): Note[] {
+  const notes: Note[] = [];
+  const seen = new Set<string>();
+  for (const item of list(raw, LIMITS.notes, 'notes')) {
+    if (!isObj(item)) continue;
+    const visibility = get(item, 'visibility') === 'shared' ? 'shared' : 'private';
+    if (visibility === 'private' && !keepPrivate) continue;
+    const text = cleanText(get(item, 'text'), T.note, true);
+    if (!text) continue;
+    const rawOption = get(item, 'optionId');
+    const rawFactor = get(item, 'factorId');
+    const optionId = refId(rawOption, optionIds);
+    const factorId = refId(rawFactor, factorIds);
+    // A note pointing at something that doesn't exist is dropped rather than re-attached elsewhere.
+    if ((rawOption !== undefined && !optionId) || (rawFactor !== undefined && !factorId)) continue;
+    const author = cleanText(get(item, 'author'), T.author);
+    notes.push({
+      id: uniqueId(get(item, 'id'), seen),
+      ...(optionId && { optionId }),
+      ...(factorId && { factorId }),
+      text,
+      visibility,
+      ...(author && { author }),
+      createdAt: cleanDate(get(item, 'createdAt'), now),
+    });
+  }
+  return notes;
+}
+
+function cleanWeights(raw: unknown, factorIds: Set<string> | null): Weight[] {
+  const byFactor = new Map<string, Weight>();
+  for (const item of list(raw, LIMITS.factors, 'weights')) {
+    if (!isObj(item)) continue;
+    const factorId = refId(get(item, 'factorId'), factorIds);
+    const w = get(item, 'weight');
+    if (!factorId || typeof w !== 'number' || !Number.isFinite(w)) continue;
+    byFactor.set(factorId, { factorId, weight: Math.min(WEIGHT_MAX, Math.max(WEIGHT_MIN, Math.round(w))) });
+  }
+  return [...byFactor.values()];
+}
+
+/** Group rules from someone else. When in doubt, anonymous: a ballot without a name is the safe side. */
+export function cleanGroupSettings(v: unknown): GroupSettings {
+  const o = isObj(v) ? v : {};
+  const expected = intIn(get(o, 'expected'), 1, LIMITS.expected);
+  return {
+    anonymity: get(o, 'anonymity') === 'named' ? 'named' : 'anonymous',
+    scoring: get(o, 'scoring') === 'open' ? 'open' : 'blind',
+    weights: get(o, 'weights') === 'everyone' ? 'everyone' : 'organizer',
+    combine: get(o, 'combine') === 'median' ? 'median' : 'mean',
+    ...(expected && { expected }),
+  };
+}
+
+function cleanGroupResult(v: unknown, optionIds: Set<string>, factorIds: Set<string>, settings: Settings): GroupResult | undefined {
+  if (!isObj(v)) return undefined;
+  const pugh = settings.mode === 'pugh';
+  const lo = pugh ? -settings.pughSteps : 0;
+  const hi = pugh ? settings.pughSteps : settings.scaleMax;
+  // The organizer's own scores can count as one more ballot.
+  const maxBallots = LIMITS.ballots + 1;
+
+  const cells = new Map<string, CellResult>();
+  for (const item of list(get(v, 'cells'), LIMITS.scores, 'cells')) {
+    if (!isObj(item)) continue;
+    const optionId = refId(get(item, 'optionId'), optionIds);
+    const factorId = refId(get(item, 'factorId'), factorIds);
+    const n = intIn(get(item, 'n'), 1, maxBallots);
+    const value = numIn(get(item, 'value'), lo, hi);
+    if (!optionId || !factorId || !n || value === undefined) continue;
+    if (pugh && optionId === settings.baselineId) continue;
+    const low = Math.min(numIn(get(item, 'low'), lo, hi) ?? value, value);
+    const high = Math.max(numIn(get(item, 'high'), lo, hi) ?? value, value);
+    cells.set(`${optionId} ${factorId}`, { optionId, factorId, n, value, low, high, spread: numIn(get(item, 'spread'), 0, 1) ?? 0 });
+  }
+
+  const weights = new Map<string, WeightResult>();
+  for (const item of list(get(v, 'weights'), LIMITS.factors, 'weights')) {
+    if (!isObj(item)) continue;
+    const factorId = refId(get(item, 'factorId'), factorIds);
+    const n = intIn(get(item, 'n'), 1, maxBallots);
+    const value = numIn(get(item, 'value'), WEIGHT_MIN, WEIGHT_MAX);
+    if (!factorId || !n || value === undefined) continue;
+    const low = Math.min(numIn(get(item, 'low'), WEIGHT_MIN, WEIGHT_MAX) ?? value, value);
+    const high = Math.max(numIn(get(item, 'high'), WEIGHT_MIN, WEIGHT_MAX) ?? value, value);
+    weights.set(factorId, { factorId, n, value, low, high, spread: numIn(get(item, 'spread'), 0, 1) ?? 0 });
+  }
+
+  return {
+    ballots: intIn(get(v, 'ballots'), 0, maxBallots) ?? 0,
+    cells: [...cells.values()],
+    ...(weights.size > 0 && { weights: [...weights.values()] }),
+  };
+}
+
+/**
+ * A ballot read on its own, before it is matched to a decision: ids well formed, numbers finite,
+ * text cleaned, private notes dropped, note authors dropped. See matchBallot for the rest.
+ */
+export function validateBallot(raw: unknown): Ballot {
+  if (!isObj(raw)) throw new FormatError('invalid', 'Missing ballot');
+  const decisionId = cleanId(get(raw, 'decisionId'));
+  const inviteId = cleanId(get(raw, 'inviteId'));
+  const voterId = cleanId(get(raw, 'voterId'));
+  if (!decisionId || !inviteId || !voterId) throw new FormatError('invalid', 'Ballot without ids');
+  const now = new Date().toISOString();
+  const author = cleanText(get(raw, 'author'), T.author);
+  const weights = cleanWeights(get(raw, 'weights'), null);
+  return {
+    decisionId,
+    inviteId,
+    voterId,
+    revision: intIn(get(raw, 'revision'), 1, LIMITS.revision) ?? 1,
+    createdAt: cleanDate(get(raw, 'createdAt'), now),
+    ...(author && { author }),
+    // The widest range any decision allows; matchBallot narrows it to the decision's own scale.
+    scores: cleanScores(get(raw, 'scores'), null, null, 0, Math.max(...SCALES), false),
+    pugh: cleanScores(get(raw, 'pugh'), null, null, -2, 2, true),
+    ...(weights.length > 0 && { weights }),
+    notes: cleanNotes(get(raw, 'notes'), null, null, false, now).map(({ author: _a, ...n }) => n),
+  };
+}
+
+export interface BallotMatch {
+  ballot: Ballot;
+  /** The ballot carried a name, but the decision is anonymous, so the name was removed. */
+  nameRemoved: boolean;
+  /** Scores that pointed at options or factors this decision doesn't have. */
+  dropped: number;
+}
+
+interface Shape {
+  optionIds: Set<string>;
+  factorIds: Set<string>;
+  settings: Settings;
+  group?: GroupSettings;
+}
+
+function matchTo(b: Ballot, s: Shape): BallotMatch {
+  const { settings } = s;
+  // Without group rules to go by, a ballot is treated as anonymous.
+  const anonymous = s.group?.anonymity !== 'named';
+  const scores = cleanScores(b.scores, s.optionIds, s.factorIds, 0, settings.scaleMax, false);
+  const pugh = cleanScores(b.pugh, s.optionIds, s.factorIds, -settings.pughSteps, settings.pughSteps, true, settings.baselineId);
+  const weights = s.group?.weights === 'everyone' ? cleanWeights(b.weights, s.factorIds) : [];
+  const notes = cleanNotes(b.notes, s.optionIds, s.factorIds, false, b.createdAt).map(({ author: _a, ...n }) =>
+    anonymous ? { ...n, createdAt: dayOnly(n.createdAt) } : n,
+  );
+  const author = !anonymous && b.author ? b.author : undefined;
+  return {
+    ballot: {
+      decisionId: b.decisionId,
+      inviteId: b.inviteId,
+      voterId: b.voterId,
+      revision: b.revision,
+      createdAt: anonymous ? dayOnly(b.createdAt) : b.createdAt,
+      ...(author && { author }),
+      scores,
+      pugh,
+      ...(weights.length > 0 && { weights }),
+      notes,
+    },
+    nameRemoved: anonymous && Boolean(b.author),
+    dropped: b.scores.length + b.pugh.length - scores.length - pugh.length,
+  };
+}
+
+/** Fits a ballot to the decision it belongs to: unknown cells dropped, values clamped, names removed in anonymous groups. */
+export function matchBallot(b: Ballot, d: Decision): BallotMatch {
+  return matchTo(b, {
+    optionIds: new Set(d.options.map((o) => o.id)),
+    factorIds: new Set(d.factors.map((f) => f.id)),
+    settings: d.settings,
+    ...(d.group && { group: d.group.settings }),
+  });
+}
+
+export function validateInvite(raw: unknown): Invite {
+  if (!isObj(raw)) throw new FormatError('invalid', 'Missing invite');
+  const rawDecision = get(raw, 'decision');
+  // Ballots find their way back by this id, so it must be the organizer's own, not a made-up one.
+  if (!isObj(rawDecision) || !cleanId(get(rawDecision, 'id'))) throw new FormatError('invalid', 'Invite without a decision id');
+  const decision = validateDecision(rawDecision, 'template');
+  const inviteId = cleanId(get(raw, 'inviteId'));
+  if (!inviteId) throw new FormatError('invalid', 'Invite without an id');
+  const settings = cleanGroupSettings(get(raw, 'settings'));
+  const organizerName = settings.anonymity === 'named' ? cleanText(get(raw, 'organizerName'), T.author) : '';
+  const result =
+    settings.scoring === 'open'
+      ? cleanGroupResult(get(raw, 'result'), new Set(decision.options.map((o) => o.id)), new Set(decision.factors.map((f) => f.id)), decision.settings)
+      : undefined;
+  return { decision, settings, inviteId, ...(organizerName && { organizerName }), ...(result && { result }) };
+}
+
+/** The group data kept with a decision on this device. Only ever read from the owner's own storage and backups. */
+function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined {
+  if (!isObj(v)) return undefined;
+  const role = get(v, 'role') === 'participant' ? 'participant' : 'organizer';
+  const settings = cleanGroupSettings(get(v, 'settings'));
+  const myName = settings.anonymity === 'named' ? cleanText(get(v, 'myName'), T.author) : '';
+
+  if (role === 'participant') {
+    const result = cleanGroupResult(get(v, 'result'), shape.optionIds, shape.factorIds, shape.settings);
+    const sourceId = cleanId(get(v, 'sourceId'));
+    const voterId = cleanId(get(v, 'voterId'));
+    const inviteId = cleanId(get(v, 'inviteId'));
+    // Without these the ballot can't reach the organizer or replace an earlier one; keep it as a plain decision.
+    if (!sourceId || !voterId || !inviteId) return undefined;
+    const sentAt = get(v, 'sentAt') === undefined ? undefined : cleanDate(get(v, 'sentAt'), new Date().toISOString());
+    const organizerName = settings.anonymity === 'named' ? cleanText(get(v, 'organizerName'), T.author) : '';
+    return {
+      role,
+      settings,
+      inviteId,
+      ballots: [],
+      includeOwn: false,
+      anonymityLocked: true,
+      ...(myName && { myName }),
+      sourceId,
+      voterId,
+      revision: intIn(get(v, 'revision'), 0, LIMITS.revision) ?? 0,
+      ...(sentAt && { sentAt }),
+      ...(organizerName && { organizerName }),
+      ...(result && { result }),
+    };
+  }
+
+  const byVoter = new Map<string, StoredBallot>();
+  for (const item of list(get(v, 'ballots'), LIMITS.ballots, 'ballots')) {
+    if (!isObj(item)) continue;
+    let ballot: Ballot;
+    try {
+      ballot = validateBallot(item);
+    } catch {
+      continue;
+    }
+    const matched = matchTo(ballot, { ...shape, group: settings }).ballot;
+    const prev = byVoter.get(matched.voterId);
+    if (prev && prev.revision >= matched.revision) continue;
+    byVoter.set(matched.voterId, {
+      ...matched,
+      included: get(item, 'included') !== false,
+      receivedAt: cleanDate(get(item, 'receivedAt'), matched.createdAt),
+    });
+  }
+  const ballots = [...byVoter.values()];
+  return {
+    role,
+    settings,
+    inviteId: cleanId(get(v, 'inviteId')) ?? newId(16),
+    ballots,
+    includeOwn: get(v, 'includeOwn') !== false,
+    anonymityLocked: get(v, 'anonymityLocked') === true || ballots.length > 0,
+    ...(myName && { myName }),
+  };
+}
+
+export function validateDecision(raw: unknown, kind: DecisionKind): Decision {
   if (!isObj(raw)) throw new FormatError('invalid', 'Missing decision data');
   const now = new Date().toISOString();
-  const T = LIMITS.text;
 
   const optionIdsSeen = new Set<string>();
   const options: Option[] = [];
@@ -236,34 +532,11 @@ export function validateDecision(raw: unknown, kind: Kind): Decision {
   const pugh = keepScores
     ? cleanScores(get(raw, 'pugh'), optionIds, factorIds, -settings.pughSteps, settings.pughSteps, true, settings.baselineId)
     : [];
+  const notes = kind === 'template' ? [] : cleanNotes(get(raw, 'notes'), optionIds, factorIds, kind === 'backup', now);
 
-  const notes: Note[] = [];
-  const noteIdsSeen = new Set<string>();
-  if (kind !== 'template') {
-    for (const item of list(get(raw, 'notes'), LIMITS.notes, 'notes')) {
-      if (!isObj(item)) continue;
-      const visibility = get(item, 'visibility') === 'shared' ? 'shared' : 'private';
-      if (visibility === 'private' && kind !== 'backup') continue;
-      const text = cleanText(get(item, 'text'), T.note, true);
-      if (!text) continue;
-      const rawOption = get(item, 'optionId');
-      const rawFactor = get(item, 'factorId');
-      const optionId = refId(rawOption, optionIds);
-      const factorId = refId(rawFactor, factorIds);
-      // A note pointing at something that doesn't exist is dropped rather than re-attached elsewhere.
-      if ((rawOption !== undefined && !optionId) || (rawFactor !== undefined && !factorId)) continue;
-      const author = cleanText(get(item, 'author'), T.author);
-      notes.push({
-        id: uniqueId(get(item, 'id'), noteIdsSeen),
-        ...(optionId && { optionId }),
-        ...(factorId && { factorId }),
-        text,
-        visibility,
-        ...(author && { author }),
-        createdAt: cleanDate(get(item, 'createdAt'), now),
-      });
-    }
-  }
+  // Group data stays on the owner's device: it is read back from their own storage and backups only.
+  const group = kind === 'backup' ? cleanGroup(get(raw, 'group'), { optionIds, factorIds, settings }) : undefined;
+  const groupResult = kind === 'template' ? undefined : cleanGroupResult(get(raw, 'groupResult'), optionIds, factorIds, settings);
 
   const id = get(raw, 'id');
   const description = cleanText(get(raw, 'description'), T.description, true);
@@ -281,5 +554,7 @@ export function validateDecision(raw: unknown, kind: Kind): Decision {
     scores,
     pugh,
     notes,
+    ...(group && { group }),
+    ...(groupResult && { groupResult }),
   };
 }

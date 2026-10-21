@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { addNote, removeOption, setFact, setScore, setSettings, tidyNames, renameOption } from '../src/app/edit';
-import { sampleDecision } from './fixtures';
+import {
+  addBallots,
+  addFactor,
+  addNote,
+  addOption,
+  removeOption,
+  renameOption,
+  setFact,
+  setScore,
+  setSettings,
+  setTitle,
+  setWeight,
+  tidyNames,
+} from '../src/app/edit';
+import { ballotFrom, groupDecision, participantCopy, sampleDecision } from './fixtures';
 
 describe('edits', () => {
   it('removing an option removes its scores, facts, notes and baseline role', () => {
@@ -31,5 +44,28 @@ describe('edits', () => {
     const typed = renameOption('a', 'Car A ')(sampleDecision());
     expect(typed.options[0]?.name).toBe('Car A ');
     expect(tidyNames(typed).options[0]?.name).toBe('Car A');
+  });
+});
+
+describe('group locks', () => {
+  it("a participant scores, but can't change the organizer's options, factors or facts", () => {
+    const p = participantCopy(groupDecision());
+    for (const edit of [addOption('Car D'), renameOption('a', 'x'), removeOption('a'), addFactor('Color'), setTitle('x'), setFact('a', 'price', 'x', '')]) {
+      expect(edit(p)).toBe(p);
+    }
+    expect(setScore('a', 'price', 2)(p)).not.toBe(p);
+  });
+
+  it('a participant sets importance only when the organizer asked everyone to', () => {
+    expect(setWeight('price', 1)(participantCopy(groupDecision({ weights: 'organizer' }))).factors[0]!.weight).toBe(5);
+    expect(setWeight('price', 1)(participantCopy(groupDecision({ weights: 'everyone' }))).factors[0]!.weight).toBe(1);
+  });
+
+  it('scoring rules lock once ballots exist', () => {
+    const d = groupDecision();
+    expect(setSettings({ scaleMax: 5 })(d).settings.scaleMax).toBe(5);
+    const withBallot = addBallots([ballotFrom(d, 'v1', 5)])(d);
+    expect(setSettings({ scaleMax: 5 })(withBallot)).toBe(withBallot);
+    expect(setSettings({ mode: 'pugh' })(withBallot)).toBe(withBallot);
   });
 });

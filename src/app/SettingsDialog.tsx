@@ -4,7 +4,8 @@ import type { Decision } from '../format/types';
 import { t } from '../i18n';
 import { CONTENT_LANGUAGES, nativeName } from '../i18n/languages';
 import { NotesEditor } from './DetailDialog';
-import { setDescription, setLang, setSettings, type Edit } from './edit';
+import { scoringLocked, setDescription, setLang, setSettings, structureLocked, type Edit } from './edit';
+import { GroupSection } from './GroupSettings';
 import { optionName } from './labels';
 import { Dialog, Segmented } from './ui';
 
@@ -12,9 +13,13 @@ export function SettingsDialog({ d, uiLang, onEdit, onClose }: { d: Decision; ui
   const [description, setDescriptionText] = useState(d.description ?? '');
   const langs = CONTENT_LANGUAGES.includes(d.lang) ? CONTENT_LANGUAGES : [d.lang, ...CONTENT_LANGUAGES];
   const pugh = d.settings.mode === 'pugh';
+  const locked = scoringLocked(d);
+  const fixed = structureLocked(d);
+  const participant = d.group?.role === 'participant';
 
   return (
     <Dialog title={t('settings.title')} onClose={onClose}>
+      <GroupSection d={d} onEdit={onEdit} />
       <label className="field">
         <span className="field-label">{t('settings.description')}</span>
         <textarea
@@ -23,6 +28,7 @@ export function SettingsDialog({ d, uiLang, onEdit, onClose }: { d: Decision; ui
           dir="auto"
           lang={d.lang}
           maxLength={LIMITS.text.description}
+          readOnly={fixed}
           placeholder={t('settings.descriptionPlaceholder')}
           onChange={(e) => setDescriptionText(e.target.value)}
           onBlur={() => onEdit(setDescription(description))}
@@ -32,7 +38,7 @@ export function SettingsDialog({ d, uiLang, onEdit, onClose }: { d: Decision; ui
       <label className="field">
         <span className="field-label">{t('settings.contentLanguage')}</span>
         <span className="muted small">{t('settings.contentLanguageHelp')}</span>
-        <select value={d.lang} onChange={(e) => onEdit(setLang(e.target.value))}>
+        <select value={d.lang} disabled={fixed} onChange={(e) => onEdit(setLang(e.target.value))}>
           {langs.map((code) => (
             <option key={code} value={code}>
               {nativeName(code)}
@@ -41,10 +47,16 @@ export function SettingsDialog({ d, uiLang, onEdit, onClose }: { d: Decision; ui
         </select>
       </label>
 
+      {locked && (
+        <p className="callout small">
+          {participant ? t('settings.lockedByOrganizer') : t('settings.lockedByBallots')}
+        </p>
+      )}
       <div className="field">
         <span className="field-label">{t('settings.mode')}</span>
         <Segmented
           value={d.settings.mode}
+          readOnly={locked}
           label={t('settings.mode')}
           onChange={(mode) => onEdit(setSettings({ mode }))}
           options={[
@@ -60,6 +72,7 @@ export function SettingsDialog({ d, uiLang, onEdit, onClose }: { d: Decision; ui
           <span className="field-label">{t('settings.scale')}</span>
           <Segmented
             value={d.settings.scaleMax}
+            readOnly={locked}
             label={t('settings.scale')}
             onChange={(scaleMax) => onEdit(setSettings({ scaleMax }))}
             options={[5, 10, 100].map((n) => ({ value: n, label: `0–${n}` }))}
@@ -73,6 +86,7 @@ export function SettingsDialog({ d, uiLang, onEdit, onClose }: { d: Decision; ui
             <span className="field-label">{t('settings.pughSteps')}</span>
             <Segmented
               value={d.settings.pughSteps}
+              readOnly={locked}
               label={t('settings.pughSteps')}
               onChange={(pughSteps) => onEdit(setSettings({ pughSteps }))}
               options={[
@@ -84,7 +98,7 @@ export function SettingsDialog({ d, uiLang, onEdit, onClose }: { d: Decision; ui
           <label className="field">
             <span className="field-label">{t('settings.baseline')}</span>
             <span className="muted small">{t('settings.baselineHelp')}</span>
-            <select value={d.settings.baselineId ?? ''} onChange={(e) => onEdit(setSettings({ baselineId: e.target.value || undefined }))}>
+            <select value={d.settings.baselineId ?? ''} disabled={locked} onChange={(e) => onEdit(setSettings({ baselineId: e.target.value || undefined }))}>
               <option value="">{t('settings.noBaseline')}</option>
               {d.options.map((o) => (
                 <option key={o.id} value={o.id}>

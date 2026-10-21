@@ -1,4 +1,6 @@
-import type { Decision } from '../src/format/types';
+import { joinInvite } from '../src/format/create';
+import { inviteEnvelope } from '../src/format/share';
+import type { Ballot, Decision, GroupSettings, Score } from '../src/format/types';
 
 export const PRIVATE_MARKER = 'PRIVATE-7f3a-do-not-share';
 export const SHARED_MARKER = 'SHARED-91bc';
@@ -72,4 +74,50 @@ export function randomDecision(seed: number): Decision {
     pugh,
     notes: [],
   });
+}
+
+export const NAME_MARKER = 'NAME-5d1e';
+
+/** The sample decision, organized as a group with no ballots yet. */
+export function groupDecision(settings: Partial<GroupSettings> = {}, overrides: Partial<Decision> = {}): Decision {
+  return sampleDecision({
+    group: {
+      role: 'organizer',
+      settings: { anonymity: 'anonymous', scoring: 'blind', weights: 'organizer', combine: 'mean', ...settings },
+      inviteId: 'invite1',
+      ballots: [],
+      includeOwn: true,
+      anonymityLocked: false,
+    },
+    ...overrides,
+  });
+}
+
+/** A participant's copy of the organizer's invite, scored, with one private and one shared note and a typed name. */
+export function participantCopy(organizer: Decision, scores: Score[] = organizer.scores): Decision {
+  const d = joinInvite(inviteEnvelope(organizer).data, 'en');
+  return {
+    ...d,
+    scores: scores.map((s) => ({ ...s })),
+    notes: [
+      { id: 'p1', optionId: 'a', text: PRIVATE_MARKER, visibility: 'private', createdAt: '2026-10-20T14:35:12.000Z' },
+      { id: 'p2', optionId: 'b', text: SHARED_MARKER, visibility: 'shared', author: NAME_MARKER, createdAt: '2026-10-20T14:35:12.000Z' },
+    ],
+    group: { ...d.group!, myName: NAME_MARKER, revision: 1 },
+  };
+}
+
+/** A ballot as the organizer receives it, with every cell set to `value`. */
+export function ballotFrom(organizer: Decision, voterId: string, value: number, extra: Partial<Ballot> = {}): Ballot {
+  return {
+    decisionId: organizer.id,
+    inviteId: organizer.group?.inviteId ?? 'invite1',
+    voterId,
+    revision: 1,
+    createdAt: '2026-10-20T00:00:00.000Z',
+    scores: organizer.options.flatMap((o) => organizer.factors.map((f) => ({ optionId: o.id, factorId: f.id, value }))),
+    pugh: [],
+    notes: [],
+    ...extra,
+  };
 }

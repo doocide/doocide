@@ -45,6 +45,39 @@ export function pickFileText(accept: string): Promise<string | null> {
   });
 }
 
+/**
+ * Opens the system file picker for several files at once (ballots, for example). Returns each file's
+ * text; files that are too big or unreadable are counted in `failed`, not read.
+ */
+export function pickFilesText(accept: string): Promise<{ texts: string[]; failed: number } | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = accept;
+    input.multiple = true;
+    input.addEventListener('change', async () => {
+      const files = [...(input.files ?? [])];
+      if (!files.length) return resolve(null);
+      const texts: string[] = [];
+      let failed = Math.max(0, files.length - LIMITS.ballots);
+      for (const file of files.slice(0, LIMITS.ballots)) {
+        if (file.size > LIMITS.fileBytes) {
+          failed++;
+          continue;
+        }
+        try {
+          texts.push(await file.text());
+        } catch {
+          failed++;
+        }
+      }
+      resolve({ texts, failed });
+    });
+    input.addEventListener('cancel', () => resolve(null));
+    input.click();
+  });
+}
+
 export const canShareNatively = () => typeof navigator.share === 'function';
 
 export async function shareNatively(data: ShareData): Promise<boolean> {

@@ -3,8 +3,8 @@
 
 import { LIMITS } from './limits';
 import { assertShareable } from './share';
-import type { Envelope } from './types';
-import { FormatError, parseEnvelopeText } from './validate';
+import type { AnyEnvelope } from './types';
+import { FormatError, parseAnyEnvelopeText } from './validate';
 
 export const LINK_KEY = 'd';
 export const TEMPLATE_KEY = 't';
@@ -74,17 +74,18 @@ export function appBase(href: string): string {
   return url.href;
 }
 
-export async function encodePayload(env: Envelope): Promise<string> {
+export async function encodePayload(env: AnyEnvelope): Promise<string> {
   assertShareable(env);
   const json = JSON.stringify(env);
   return toBase64Url(await deflate(new TextEncoder().encode(json)));
 }
 
-export async function makeLink(env: Envelope, href: string): Promise<string> {
+export async function makeLink(env: AnyEnvelope, href: string): Promise<string> {
   return `${appBase(href)}#${LINK_KEY}=${await encodePayload(env)}`;
 }
 
-export async function decodePayload(payload: string): Promise<Envelope> {
+/** Any shared kind: a decision, template, invite or ballot. Never a backup. */
+export async function decodePayload(payload: string): Promise<AnyEnvelope> {
   if (payload.length > LIMITS.linkChars) throw new FormatError('too-big');
   const bytes = await inflateCapped(fromBase64Url(payload), LIMITS.unpackedBytes);
   let text: string;
@@ -93,7 +94,7 @@ export async function decodePayload(payload: string): Promise<Envelope> {
   } catch {
     throw new FormatError('bad-data');
   }
-  const env = parseEnvelopeText(text);
+  const env = parseAnyEnvelopeText(text);
   // A link is always someone else's share; it can never install a backup.
   if (env.kind === 'backup') throw new FormatError('invalid', 'Backups cannot travel in links');
   return env;

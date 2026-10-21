@@ -6,7 +6,9 @@ Free, local-first decision tool based on the Pugh Matrix. No server, no accounts
 
 Milestone 1 released as v0.1.0 (2026-10-20), live at https://doocide.github.io: solo decisions, share links and files, paste-a-table import, CSV export, private/shared notes, facts, EN + RO.
 
-Next: milestone 2 (group ballots, blind or open scoring per decision, merge, disagreement map, anonymity, signatures, passphrase and sealed encryption, and an optional passphrase lock that encrypts the local library and backup files at rest), then milestone 3 (AI copy-prompt and MCP, public sharing, room mode with QR codes, decision journal, ~35 languages).
+Milestone 2a tagged v0.2.0 (2026-10-20), not yet released to the site: invites and ballots by link or file, organizer approval, anonymous or named ballots (locked after the first ballot), blind or open scoring, combined results (average or median), a disagreement list, and a group results share.
+
+Next: the rest of milestone 2 in order: 2b signatures and short-code verification, 2c passphrase and sealed encryption plus the optional library lock, 2d collecting ballots through a synced cloud folder. Then milestone 3 (AI copy-prompt and MCP, public sharing, room mode with QR codes, decision journal, ~35 languages).
 
 ## Stack and commands
 
@@ -27,7 +29,7 @@ React 19 + TypeScript 7 + Vite 8, built into one HTML file (vite-plugin-singlefi
 - `tools/`: build plugins (security policy hashes, static packs).
 - `schema/` (MIT): JSON Schema. `templates/` (CC0): starter templates.
 - `docs/assets/`: README logo and screenshots. The example decision `summer-trip.doocide` drives the README's example link and every screenshot; when the UI changes visibly, refresh them with `sandbox/maintainer/screenshots.md` (local, gitignored) and `node tools/demo-link.mjs --update-readme`.
-- `tests/`: `privacy.test.ts` and `input.test.ts` enforce the never-lists below; `build.test.ts` checks the built pages.
+- `tests/`: `privacy.test.ts` and `input.test.ts` enforce the never-lists below; `group.test.ts` checks merging and the ballot checks; `build.test.ts` checks the built pages.
 
 The app is AGPL-3.0-or-later. The file format, schema, templates and scoring engine are MIT or CC0, so other tools can adopt them.
 

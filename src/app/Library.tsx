@@ -87,6 +87,12 @@ export function Library({ decisions, persistent, persisted, backups, onBackup, o
 
   const notBackedUp = decisions.filter((d) => backupStatus(d.updatedAt, backups[d.id]) !== 'current').length;
 
+  /** The second line of a card: the best option, or where a participant's ballot stands. */
+  const bestLine = (d: Decision, best: string | null) => {
+    if (d.group?.role === 'participant') return d.group.sentAt ? t('library.ballotSent', { date: formatDate(d.group.sentAt) }) : t('library.ballotNotSent');
+    return best ? t('library.best', { name: best }) : t('library.noWinner');
+  };
+
   const backupLabel = (status: BackupStatus, id: string) => {
     const at = backups[id];
     if (status === 'never' || !at) return t('library.backupNever');
@@ -155,10 +161,12 @@ export function Library({ decisions, persistent, persisted, backups, onBackup, o
                       {decisionTitle(d)}
                     </span>
                     <span className="dc-best" dir="auto">
-                      {best ? t('library.best', { name: best }) : t('library.noWinner')}
+                      {bestLine(d, best)}
                     </span>
                     <span className="dc-meta">
-                      {t('library.counts', { options: d.options.length, factors: d.factors.length })} · {formatDate(d.updatedAt)} ·{' '}
+                      {t('library.counts', { options: d.options.length, factors: d.factors.length })} ·{' '}
+                      {d.group?.role === 'organizer' && <>{t('library.ballots', { count: d.group.ballots.length })} · </>}
+                      {formatDate(d.updatedAt)} ·{' '}
                       <span className={`dc-backup ${backup}`}>{backupLabel(backup, d.id)}</span>
                     </span>
                   </button>

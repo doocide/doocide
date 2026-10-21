@@ -1,0 +1,97 @@
+// The organizer's ballots: who's in, who's left out, and how to collect more. The 2010 "merge these
+// perspectives" screen, without a server.
+
+import type { Decision, StoredBallot } from '../format/types';
+import { formatDate, t } from '../i18n';
+import { removeBallot, setBallotIncluded, setIncludeOwn, type Edit } from './edit';
+import { Icon, useConfirm } from './ui';
+
+/** A ballot's name: the one its sender typed (named groups), or a number. */
+export function ballotLabel(d: Decision, b: StoredBallot, index: number): string {
+  if (b.author) return b.author;
+  return d.group?.settings.anonymity === 'named' ? t('ballots.noName', { n: index + 1 }) : t('ballots.anonymousN', { n: index + 1 });
+}
+
+interface Props {
+  d: Decision;
+  /** Ballots counting in the group result right now, the organizer's own included. */
+  voters: number;
+  onEdit: (edit: Edit) => void;
+  onInvite: () => void;
+  onOpenBallots: () => void;
+}
+
+export function BallotsPanel({ d, voters, onEdit, onInvite, onOpenBallots }: Props) {
+  const ask = useConfirm();
+  const g = d.group;
+  if (g?.role !== 'organizer') return null;
+  const own = (d.settings.mode === 'pugh' ? d.pugh : d.scores).length;
+  const count = g.ballots.length;
+  const { expected, anonymity } = g.settings;
+
+  return (
+    <section className="ballots" aria-labelledby="ballots-title">
+      <h2 id="ballots-title">{t('ballots.title')}</h2>
+      <p className="muted small">
+        {expected ? t('ballots.countOf', { count, expected }) : t('ballots.count', { count })} ·{' '}
+        {anonymity === 'anonymous' ? t('group.anonymousShort') : t('group.namedShort')}
+      </p>
+      {expected !== undefined && count > expected && <p className="callout warn small">{t('ballots.overCount', { count, expected })}</p>}
+      {anonymity === 'anonymous' && voters === 2 && <p className="callout small">{t('ballots.twoReveal')}</p>}
+
+      <ul className="ballot-list">
+        <li>
+          <label className="check">
+            <input type="checkbox" checked={g.includeOwn} onChange={(e) => onEdit(setIncludeOwn(e.target.checked))} />
+            {t('ballots.you')}
+          </label>
+          <span className="muted small">{own ? t('ballots.yourScores', { count: own }) : t('ballots.youNoScores')}</span>
+        </li>
+        {g.ballots.map((b, i) => {
+          const label = ballotLabel(d, b, i);
+          return (
+            <li key={b.voterId}>
+              <label className="check">
+                <input type="checkbox" checked={b.included} onChange={(e) => onEdit(setBallotIncluded(b.voterId, e.target.checked))} />
+                <bdi>{label}</bdi>
+              </label>
+              {b.author && (
+                <span className="muted small" title={t('notes.authorUnverified')}>
+                  {t('review.selfDeclared')}
+                </span>
+              )}
+              <span className="muted small">
+                {formatDate(b.receivedAt)}
+                {b.revision > 1 && ` · ${t('ballots.updated')}`}
+              </span>
+              <button
+                className="icon-button small"
+                aria-label={t('ballots.remove', { name: label })}
+                title={t('ballots.remove', { name: label })}
+                onClick={async () => {
+                  const ok = await ask({ title: t('ballots.removeTitle'), message: t('ballots.confirmRemove'), confirmLabel: t('ballots.removeTitle'), danger: true });
+                  if (ok) onEdit(removeBallot(b.voterId));
+                }}
+              >
+                <Icon name="trash" size={16} />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {count === 0 && <p className="muted small">{t('ballots.none')}</p>}
+
+      <div className="actions start">
+        <button className="button primary" onClick={onInvite}>
+          <Icon name="people" size={18} />
+          {t('ballots.invite')}
+        </button>
+        <button className="button" onClick={onOpenBallots}>
+          <Icon name="file" size={18} />
+          {t('ballots.open')}
+        </button>
+      </div>
+      <p className="muted small">{t('ballots.how')}</p>
+    </section>
+  );
+}

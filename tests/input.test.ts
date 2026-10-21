@@ -5,8 +5,18 @@ import { decodePayload } from '../src/format/codec';
 import { LIMITS } from '../src/format/limits';
 import { checkLink, cleanText, escapeSpreadsheetText } from '../src/format/sanitize';
 import { parseTable, toCSV } from '../src/format/table';
-import { FormatError, jsonDepth, parseEnvelopeText, validateEnvelope } from '../src/format/validate';
-import { sampleDecision } from './fixtures';
+import { inviteEnvelope } from '../src/format/share';
+import {
+  FormatError,
+  jsonDepth,
+  matchBallot,
+  parseAnyEnvelopeText,
+  parseEnvelopeText,
+  validateAnyEnvelope,
+  validateBallot,
+  validateEnvelope,
+} from '../src/format/validate';
+import { NAME_MARKER, ballotFrom, groupDecision, sampleDecision } from './fixtures';
 
 const toPayload = async (text: string) => {
   const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('deflate-raw'));
@@ -186,5 +196,125 @@ describe('spreadsheets', () => {
     expect(parseTable('A\tB\n1\t2')).toEqual([['A', 'B'], ['1', '2']]);
     expect(parseTable('"Name, with comma",B\r\n"Say ""hi""",2\r\n')).toEqual([['Name, with comma', 'B'], ['Say "hi"', '2']]);
     expect(parseTable('a;b;c\n1;2;3')).toEqual([['a', 'b', 'c'], ['1', '2', '3']]);
+  });
+});
+
+describe('invites and ballots from others', () => {
+  const err = (fn: () => unknown) => {
+    try {
+      fn();
+      return 'ok';
+    } catch (e) {
+      return e instanceof FormatError ? e.code : 'other';
+    }
+  };
+
+  it('refuses ballots without well-formed ids', () => {
+    expect(err(() => validateBallot({ decisionId: 'dec1', inviteId: 'invite1' }))).toBe('invalid');
+    expect(err(() => validateBallot({ decisionId: '../x', inviteId: 'i', voterId: 'v' }))).toBe('invalid');
+    expect(err(() => validateBallot('ballot'))).toBe('invalid');
+  });
+
+  it('fits a ballot to the decision: unknown cells dropped, values clamped', () => {
+    const d = groupDecision();
+    const raw = ballotFrom(d, 'voterA', 5, {
+      scores: [
+        { optionId: 'a', factorId: 'price', value: 9999 },
+        { optionId: 'ghost', factorId: 'price', value: 5 },
+        { optionId: 'b', factorId: 'safety', value: -3 },
+      ],
+    });
+    const { ballot, dropped } = matchBallot(validateBallot(raw), d);
+    expect(ballot.scores).toEqual([
+      { optionId: 'a', factorId: 'price', value: 10 },
+      { optionId: 'b', factorId: 'safety', value: 0 },
+    ]);
+    expect(dropped).toBe(1);
+  });
+
+  it('removes a name from a ballot sent to an anonymous decision, and keeps it in a named one', () => {
+    const raw = validateBallot({ ...ballotFrom(groupDecision(), 'voterA', 5), author: NAME_MARKER });
+    const anonymous = matchBallot(raw, groupDecision({ anonymity: 'anonymous' }));
+    expect(anonymous.nameRemoved).toBe(true);
+    expect(JSON.stringify(anonymous.ballot)).not.toContain(NAME_MARKER);
+    expect(matchBallot(raw, groupDecision({ anonymity: 'named' })).ballot.author).toBe(NAME_MARKER);
+  });
+
+  it('drops private notes and note authors from incoming ballots', () => {
+    const b = validateBallot({
+      ...ballotFrom(groupDecision(), 'voterA', 5),
+      notes: [
+        { id: 'n1', text: 'secret', visibility: 'private' },
+        { id: 'n2', text: 'reason', visibility: 'shared', author: NAME_MARKER },
+      ],
+    });
+    expect(b.notes).toHaveLength(1);
+    expect(JSON.stringify(b)).not.toContain(NAME_MARKER);
+  });
+
+  it('caps the size of a ballot', () => {
+    const scores = Array.from({ length: LIMITS.scores + 1 }, () => ({ optionId: 'a', factorId: 'price', value: 1 }));
+    expect(err(() => validateBallot({ ...ballotFrom(groupDecision(), 'voterA', 5), scores }))).toBe('too-big');
+  });
+
+  it('ignores __proto__ keys inside ballots', () => {
+    const text = `{"doocide":1,"kind":"ballot","enc":"none","data":{"decisionId":"dec1","inviteId":"invite1","voterId":"v1","__proto__":{"polluted":true},"scores":[{"optionId":"a","factorId":"price","value":3,"__proto__":{"polluted":true}}]}}`;
+    const env = parseAnyEnvelopeText(text);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(env.kind).toBe('ballot');
+  });
+
+  it('reads an unknown kind as made by a newer Doocide', () => {
+    expect(err(() => validateAnyEnvelope({ doocide: 1, kind: 'poll', enc: 'none', data: {} }))).toBe('newer-version');
+    expect(err(() => validateAnyEnvelope({ doocide: 1, kind: 7, enc: 'none', data: {} }))).toBe('invalid');
+  });
+
+  it('keeps invites and ballots out of the decision-only reader', () => {
+    expect(err(() => validateEnvelope(inviteEnvelope(groupDecision())))).toBe('invalid');
+  });
+
+  it('treats unclear group rules as anonymous and blind', () => {
+    const env = validateAnyEnvelope({
+      doocide: 1,
+      kind: 'invite',
+      enc: 'none',
+      data: {
+        decision: { id: 'dec1', title: 'x', options: [{ id: 'a', name: 'A' }], factors: [{ id: 'f', name: 'F', weight: 3 }] },
+        inviteId: 'invite1',
+        settings: { anonymity: 'NAMED', scoring: 'peek', expected: 1e9 },
+        organizerName: NAME_MARKER,
+        result: { ballots: 1, cells: [{ optionId: 'a', factorId: 'f', n: 1, value: 5, low: 5, high: 5, spread: 0 }] },
+      },
+    });
+    if (env.kind !== 'invite') throw new Error('expected an invite');
+    expect(env.data.settings).toEqual({ anonymity: 'anonymous', scoring: 'blind', weights: 'organizer', combine: 'mean' });
+    expect(env.data.organizerName).toBeUndefined();
+    expect(env.data.result).toBeUndefined();
+  });
+
+  it('refuses an invite whose decision id is missing or made up', () => {
+    const invite = (id: unknown) => ({ doocide: 1, kind: 'invite', enc: 'none', data: { decision: { id, title: 'x' }, inviteId: 'i1', settings: {} } });
+    expect(err(() => validateAnyEnvelope(invite(undefined)))).toBe('invalid');
+    expect(err(() => validateAnyEnvelope(invite('a/b')))).toBe('invalid');
+  });
+
+  it("can't slip group data into someone's library through a shared decision", () => {
+    const d = groupDecision({ anonymity: 'named' });
+    const shared = validateEnvelope({ doocide: 1, kind: 'decision', enc: 'none', data: d });
+    expect(shared.data.group).toBeUndefined();
+  });
+
+  it('checks and clamps a shared group result', () => {
+    const d = sampleDecision({
+      groupResult: {
+        ballots: 3,
+        cells: [
+          { optionId: 'a', factorId: 'price', n: 3, value: 500, low: -9, high: 500, spread: 7 },
+          { optionId: 'ghost', factorId: 'price', n: 3, value: 5, low: 5, high: 5, spread: 0 },
+        ],
+      },
+    });
+    const out = validateEnvelope({ doocide: 1, kind: 'decision', enc: 'none', data: d }).data.groupResult!;
+    expect(out.cells).toEqual([{ optionId: 'a', factorId: 'price', n: 3, value: 10, low: 0, high: 10, spread: 1 }]);
   });
 });

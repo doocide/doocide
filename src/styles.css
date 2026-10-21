@@ -1703,6 +1703,344 @@ input[type='range'].unset {
   }
 }
 
+/* Groups: invites, ballots, the group view */
+
+.incoming-text {
+  flex: 1 1 260px;
+  display: grid;
+  gap: 2px;
+}
+
+.incoming-text p {
+  margin: 0;
+}
+
+/* A name someone else typed: set apart from the app's own words. */
+.author {
+  font-weight: 700;
+  border-bottom: 1px dotted currentColor;
+}
+
+.group-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 10px 14px;
+  background: var(--info-soft);
+  border-bottom: 1px solid var(--border);
+}
+
+.group-bar-text {
+  flex: 1 1 260px;
+  display: grid;
+  gap: 2px;
+}
+
+.group-bar-text p {
+  margin: 0;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+/* Checkboxes and radios keep their own size; the global input rule would stretch them. */
+.check input,
+.choice-card input,
+.review-head input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+}
+
+.ballots {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.ballots h2 {
+  font-size: 18px;
+  margin: 0 0 4px;
+}
+
+.ballot-list {
+  list-style: none;
+  margin: 10px 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.ballot-list li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.ballot-list li .check {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.group-section {
+  padding-bottom: 6px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.group-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.choice {
+  border: 0;
+  padding: 0;
+  margin: 0 0 14px;
+}
+
+.choice-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.choice-card.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.choice-card input {
+  margin-top: 2px;
+}
+
+.choice-card > span {
+  display: grid;
+  gap: 2px;
+}
+
+.rules {
+  margin: 0 0 12px;
+  padding-inline-start: 18px;
+  font-size: 13.5px;
+  display: grid;
+  gap: 4px;
+}
+
+/* A combined value, with the range of the ballots under it. */
+.group-value {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.2;
+  min-width: 48px;
+}
+
+.group-value strong {
+  font-size: 16px;
+}
+
+.group-value .range {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.group-value.empty {
+  color: var(--muted);
+}
+
+/* Disagreement: a bar along the bottom of the cell, stronger when the group is split. */
+.cell.split-1 {
+  box-shadow: inset 0 -4px 0 var(--row-gold-hi);
+}
+
+.cell.split-2 {
+  box-shadow: inset 0 -4px 0 var(--bad);
+}
+
+.disagree {
+  margin-top: 16px;
+}
+
+.disagree h3 {
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+
+.disagree-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  font-size: 13.5px;
+}
+
+.disagree-list li {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border-inline-start: 4px solid var(--row-gold-hi);
+  background: var(--surface-2);
+}
+
+.disagree-list li.split-2 {
+  border-color: var(--bad);
+}
+
+.dist {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 13.5px;
+}
+
+.dist li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.dist li span {
+  font-weight: 700;
+}
+
+/* Reviewing incoming ballots */
+
+.review {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.review-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 17px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-main {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.review-list {
+  list-style: none;
+  margin: 16px 0;
+  padding: 0;
+  display: grid;
+  gap: 22px;
+}
+
+.review-head {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.flags {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 13.5px;
+}
+
+.flags li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.flags li.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+/* Someone else's ballot: a dashed frame, so it never passes for the app's own screens. */
+.ballot-frame {
+  border: 2px dashed var(--surface-3);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--surface);
+}
+
+.ballot-from {
+  margin: 0 0 10px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.mini-table {
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.mini-table th,
+.mini-table td {
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  text-align: center;
+}
+
+.mini-table th[scope='row'] {
+  text-align: start;
+  font-weight: 600;
+}
+
+.mini-table thead th {
+  background: var(--surface-2);
+}
+
+.ballot-notes h3 {
+  font-size: 14px;
+  margin: 12px 0 4px;
+}
+
+.ballot-notes ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.ballot-notes p {
+  margin: 2px 0 0;
+  white-space: pre-wrap;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .bar span {
     transition: width 0.25s ease;

@@ -6,7 +6,7 @@ import { checkLink } from '../format/sanitize';
 import { LIMITS } from '../format/limits';
 import type { Decision, Visibility } from '../format/types';
 import { formatDate, t } from '../i18n';
-import { PughInput, ScoreInput } from './controls';
+import { PughInput, ScoreInput, formatValue } from './controls';
 import {
   addNote,
   moveFactor,
@@ -30,6 +30,7 @@ import {
   type Target,
 } from './edit';
 import { ExternalLink } from './ExternalLink';
+import { formatGroupValue, type GroupCells, type Lock } from './Grid';
 import { factorGuide, factorName, optionName } from './labels';
 import { Dialog, Icon, Segmented, Stars, useConfirm } from './ui';
 
@@ -40,9 +41,14 @@ interface Props {
   uiLang: string;
   onEdit: (edit: Edit) => void;
   onClose: () => void;
+  lock?: Lock;
+  /** Showing the group's combined values instead of anyone's own. */
+  group?: GroupCells;
 }
 
-export function DetailDialog({ d, target, readOnly, uiLang, onEdit, onClose }: Props) {
+const NO_LOCK: Lock = { structure: false, weights: false };
+
+export function DetailDialog({ d, target, readOnly, uiLang, onEdit, onClose, lock = NO_LOCK, group }: Props) {
   const option = d.options.find((o) => o.id === target.optionId);
   const factor = d.factors.find((f) => f.id === target.factorId);
   if ((target.optionId && !option) || (target.factorId && !factor)) return null;
@@ -58,15 +64,62 @@ export function DetailDialog({ d, target, readOnly, uiLang, onEdit, onClose }: P
 
   return (
     <Dialog title={<span dir="auto">{title}</span>} onClose={onClose}>
-      {option && factor && <CellSection d={d} optionId={option.id} factorId={factor.id} readOnly={readOnly} uiLang={uiLang} onEdit={onEdit} />}
-      {option && !factor && <OptionSection d={d} optionId={option.id} readOnly={readOnly} uiLang={uiLang} onEdit={onEdit} onClose={onClose} />}
-      {factor && !option && <FactorSection d={d} factorId={factor.id} readOnly={readOnly} uiLang={uiLang} onEdit={onEdit} onClose={onClose} />}
+      {option && factor && <CellSection d={d} optionId={option.id} factorId={factor.id} readOnly={readOnly} fixed={readOnly || lock.structure} group={group} uiLang={uiLang} onEdit={onEdit} />}
+      {option && !factor && <OptionSection d={d} optionId={option.id} readOnly={readOnly || lock.structure} uiLang={uiLang} onEdit={onEdit} onClose={onClose} />}
+      {factor && !option && <FactorSection d={d} factorId={factor.id} readOnly={readOnly || lock.structure} weightsReadOnly={readOnly || lock.weights} uiLang={uiLang} onEdit={onEdit} onClose={onClose} />}
       <NotesEditor d={d} target={target} readOnly={readOnly} onEdit={onEdit} />
     </Dialog>
   );
 }
 
-function CellSection({ d, optionId, factorId, readOnly, uiLang, onEdit }: { d: Decision; optionId: string; factorId: string; readOnly: boolean; uiLang: string; onEdit: (e: Edit) => void }) {
+/** How the group scored one cell: the combined value, the range, and (for the organizer) each ballot. */
+function GroupCellInfo({ d, cellKeyValue, group }: { d: Decision; cellKeyValue: string; group: GroupCells }) {
+  const cell = group.cells.get(cellKeyValue);
+  const voters = group.voters?.get(cellKeyValue);
+  if (!cell) return <p className="muted small">{t('group.cellNone')}</p>;
+  return (
+    <div className="field">
+      <span className="field-label">{t('group.cellTitle')}</span>
+      <p>
+        <strong>{formatGroupValue(d, cell.value)}</strong> · {t('group.cellFrom', { count: cell.n })}
+        {cell.n > 1 && cell.low !== cell.high && ` · ${t('group.cellRange', { low: formatValue(d, cell.low), high: formatValue(d, cell.high) })}`}
+      </p>
+      {voters && voters.length > 0 && (
+        <ul className="dist">
+          {[...voters]
+            .sort((a, b) => a.value - b.value)
+            .map((v, i) => (
+              <li key={i}>
+                <bdi>{v.label}</bdi>
+                <span>{formatValue(d, v.value)}</span>
+              </li>
+            ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function CellSection({
+  d,
+  optionId,
+  factorId,
+  readOnly,
+  fixed,
+  group,
+  uiLang,
+  onEdit,
+}: {
+  d: Decision;
+  optionId: string;
+  factorId: string;
+  readOnly: boolean;
+  /** Facts belong to the decision's structure. */
+  fixed: boolean;
+  group: GroupCells | undefined;
+  uiLang: string;
+  onEdit: (e: Edit) => void;
+}) {
   const key = cellKey(optionId, factorId);
   const value = cellValues(d).get(key);
   const fact = d.facts.find((f) => f.optionId === optionId && f.factorId === factorId);
@@ -86,7 +139,8 @@ function CellSection({ d, optionId, factorId, readOnly, uiLang, onEdit }: { d: D
           <strong>{t('detail.howToScore')}</strong> {guide}
         </p>
       )}
-      {!baseline && (
+      {!baseline && group && <GroupCellInfo d={d} cellKeyValue={key} group={group} />}
+      {!baseline && !group && (
         <div className="field">
           <span className="field-label">{pugh ? t('detail.ratingVsBaseline') : t('detail.score', { max: d.settings.scaleMax })}</span>
           <div className="row">
@@ -108,7 +162,7 @@ function CellSection({ d, optionId, factorId, readOnly, uiLang, onEdit }: { d: D
           {t('detail.fact')}
         </label>
         <p className="muted small">{t('detail.factHelp')}</p>
-        {readOnly ? (
+        {fixed ? (
           <p dir="auto" lang={d.lang}>
             {fact?.text || '–'} {fact?.url && <ExternalLink url={fact.url} />}
           </p>
@@ -183,7 +237,23 @@ function OptionSection({ d, optionId, readOnly, uiLang, onEdit, onClose }: { d: 
   );
 }
 
-function FactorSection({ d, factorId, readOnly, uiLang, onEdit, onClose }: { d: Decision; factorId: string; readOnly: boolean; uiLang: string; onEdit: (e: Edit) => void; onClose: () => void }) {
+function FactorSection({
+  d,
+  factorId,
+  readOnly,
+  weightsReadOnly,
+  uiLang,
+  onEdit,
+  onClose,
+}: {
+  d: Decision;
+  factorId: string;
+  readOnly: boolean;
+  weightsReadOnly: boolean;
+  uiLang: string;
+  onEdit: (e: Edit) => void;
+  onClose: () => void;
+}) {
   const factor = d.factors.find((f) => f.id === factorId)!;
   const ask = useConfirm();
   const [guide, setGuideText] = useState(factor.guide ?? '');
@@ -197,8 +267,8 @@ function FactorSection({ d, factorId, readOnly, uiLang, onEdit, onClose }: { d: 
       <div className="field">
         <span className="field-label">{t('grid.importance')}</span>
         <div className="row">
-          <Stars value={factor.weight} readOnly={readOnly} label={t('grid.importanceOf', { name })} onChange={(w) => onEdit(setWeight(factorId, w))} />
-          <span className="muted">{t(`weight.${factor.weight}`)}</span>
+          <Stars value={Math.round(factor.weight)} readOnly={weightsReadOnly} label={t('grid.importanceOf', { name })} onChange={(w) => onEdit(setWeight(factorId, w))} />
+          <span className="muted">{t(`weight.${Math.round(factor.weight)}`)}</span>
         </div>
       </div>
       <label className="field">

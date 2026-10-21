@@ -2,15 +2,15 @@
 
 import { useMemo, useState } from 'react';
 import { cellKey, cellValues } from '../engine';
-import { t } from '../i18n';
+import { formatNumber, t } from '../i18n';
 import { formatValue } from './controls';
 import { addFactor, addOption, renameFactor, renameOption, setRating, setScore, setWeight, tidyNames } from './edit';
 import { ExternalLink } from './ExternalLink';
-import { noteCounts, scoreLabel, type MatrixProps } from './Grid';
+import { GroupValue, noteCounts, scoreLabel, type MatrixProps } from './Grid';
 import { factorGuide, factorName, optionName } from './labels';
 import { Icon, Stars } from './ui';
 
-export function Cards({ d, results, readOnly, uiLang, onEdit, onDetail }: MatrixProps) {
+export function Cards({ d, results, readOnly, uiLang, onEdit, onDetail, lock, group }: MatrixProps) {
   const [index, setIndex] = useState(0);
   const values = useMemo(() => cellValues(d), [d]);
   const facts = useMemo(() => new Map(d.facts.map((f) => [cellKey(f.optionId, f.factorId), f])), [d.facts]);
@@ -45,14 +45,17 @@ export function Cards({ d, results, readOnly, uiLang, onEdit, onDetail }: Matrix
             min={1}
             max={5}
             step={1}
-            value={f.weight}
-            disabled={readOnly}
+            value={Math.round(f.weight)}
+            disabled={readOnly || Boolean(lock?.weights)}
             aria-label={t('grid.importanceOf', { name })}
             onChange={(e) => onEdit(setWeight(f.id, Number(e.target.value)))}
           />
           <span>{t('cards.veryImportant')}</span>
         </label>
-        <div className="weight-name">{t(`weight.${f.weight}`)}</div>
+        <div className="weight-name">
+          {t(`weight.${Math.round(f.weight)}`)}
+          {group?.weights?.has(f.id) && <span className="muted small"> · {t('group.weightAverage', { value: formatNumber(f.weight, 1) })}</span>}
+        </div>
       </section>
 
       <ul className="option-sliders">
@@ -69,11 +72,15 @@ export function Cards({ d, results, readOnly, uiLang, onEdit, onDetail }: Matrix
                 <span className="name" dir="auto" lang={d.lang}>
                   {optName}
                 </span>
-                <span className={value === undefined && !baseline ? 'big-score empty' : 'big-score'}>{baseline ? '' : formatValue(d, value)}</span>
+                {group ? (
+                  !baseline && <GroupValue d={d} cell={group.cells.get(key)} />
+                ) : (
+                  <span className={value === undefined && !baseline ? 'big-score empty' : 'big-score'}>{baseline ? '' : formatValue(d, value)}</span>
+                )}
               </div>
               {baseline ? (
                 <div className="muted small">{t('pugh.baselineCell')}</div>
-              ) : (
+              ) : group ? null : (
                 <label className="slider-row">
                   <span>{t('cards.worse')}</span>
                   <input
@@ -124,7 +131,8 @@ export function Cards({ d, results, readOnly, uiLang, onEdit, onDetail }: Matrix
 }
 
 /** Phones: add and rename options and factors. */
-export function Setup({ d, results, readOnly, uiLang, onEdit, onDetail }: MatrixProps) {
+export function Setup({ d, results, readOnly, uiLang, onEdit, onDetail, lock }: MatrixProps) {
+  const fixed = readOnly || Boolean(lock?.structure);
   return (
     <div className="setup">
       <section>
@@ -139,7 +147,7 @@ export function Setup({ d, results, readOnly, uiLang, onEdit, onDetail }: Matrix
                 dir="auto"
                 lang={d.lang}
                 maxLength={200}
-                readOnly={readOnly}
+                readOnly={fixed}
                 aria-label={t('grid.optionName')}
                 onChange={(e) => onEdit(renameOption(o.id, e.target.value))}
                 onBlur={() => onEdit(tidyNames)}
@@ -151,7 +159,7 @@ export function Setup({ d, results, readOnly, uiLang, onEdit, onDetail }: Matrix
             </li>
           ))}
         </ul>
-        {!readOnly && (
+        {!fixed && (
           <button className="button ghost" onClick={() => onEdit(addOption(''))}>
             <Icon name="plus" size={18} />
             {t('grid.addOption')}
@@ -172,12 +180,12 @@ export function Setup({ d, results, readOnly, uiLang, onEdit, onDetail }: Matrix
                   dir="auto"
                   lang={d.lang}
                   maxLength={200}
-                  readOnly={readOnly}
+                  readOnly={fixed}
                   aria-label={t('grid.factorName')}
                   onChange={(e) => onEdit(renameFactor(f.id, e.target.value))}
                   onBlur={() => onEdit(tidyNames)}
                 />
-                <Stars value={f.weight} readOnly={readOnly} label={t('grid.importanceOf', { name })} onChange={(w) => onEdit(setWeight(f.id, w))} />
+                <Stars value={Math.round(f.weight)} readOnly={readOnly || Boolean(lock?.weights)} label={t('grid.importanceOf', { name })} onChange={(w) => onEdit(setWeight(f.id, w))} />
                 <button className="icon-button small" onClick={() => onDetail({ factorId: f.id })} aria-label={t('grid.factorDetails', { name })}>
                   <Icon name="more" size={16} />
                 </button>
@@ -185,7 +193,7 @@ export function Setup({ d, results, readOnly, uiLang, onEdit, onDetail }: Matrix
             );
           })}
         </ul>
-        {!readOnly && (
+        {!fixed && (
           <button className="button ghost" onClick={() => onEdit(addFactor(''))}>
             <Icon name="plus" size={18} />
             {t('grid.addFactor')}

@@ -17,6 +17,12 @@ export const LIMITS = {
   notes: 5_000,
   translations: 60,
   pastedTableChars: 500_000,
+  /** Approved ballots kept in one group decision. */
+  ballots: 1_000,
+  /** Highest re-send count a ballot may claim. */
+  revision: 1_000_000,
+  /** Highest "people expected" an organizer can set. */
+  expected: 1_000,
   text: {
     id: 64,
     lang: 35,

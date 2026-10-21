@@ -53,9 +53,10 @@ const subscribe = (l: () => void) => {
 /** Re-renders the calling component when the interface language changes. */
 export const useLang = () => useSyncExternalStore(subscribe, getLang);
 
-export function formatDate(iso: string): string {
+/** `day`: the date was cut back to midnight UTC (anonymous ballots), so show it in UTC or it may read as the day before. */
+export function formatDate(iso: string, day = false): string {
   try {
-    return new Intl.DateTimeFormat(lang, { dateStyle: 'medium' }).format(new Date(iso));
+    return new Intl.DateTimeFormat(lang, { dateStyle: 'medium', ...(day && { timeZone: 'UTC' }) }).format(new Date(iso));
   } catch {
     return iso.slice(0, 10);
   }

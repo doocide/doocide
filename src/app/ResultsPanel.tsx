@@ -1,5 +1,5 @@
-import type { Analysis, Flip, Results } from '../engine';
-import type { Decision } from '../format/types';
+import { disagreements, spreadLevel, weightDisagreements, type Analysis, type Flip, type Results } from '../engine';
+import type { Decision, GroupResult } from '../format/types';
 import { formatNumber, t } from '../i18n';
 import { formatValue } from './controls';
 import { factorName, optionName } from './labels';
@@ -37,7 +37,46 @@ function flipSentence(d: Decision, flip: Flip, winnerName: string, uiLang: strin
   });
 }
 
-export function ResultsPanel({ d, results, analysis, uiLang }: { d: Decision; results: Results; analysis: Analysis; uiLang: string }) {
+/** Where the group disagrees most, in plain sentences. */
+function Disagreements({ d, result, uiLang }: { d: Decision; result: GroupResult; uiLang: string }) {
+  const cells = disagreements(result);
+  const weights = weightDisagreements(result);
+  const option = (id: string) => {
+    const o = d.options.find((x) => x.id === id);
+    return o ? optionName(d, o, uiLang) : '';
+  };
+  const factor = (id: string) => {
+    const f = d.factors.find((x) => x.id === id);
+    return f ? factorName(d, f, uiLang) : '';
+  };
+  let body;
+  if (result.ballots < 2) body = <p className="muted small">{t('disagree.needTwo')}</p>;
+  else if (!cells.length && !weights.length) body = <p className="muted small">{t('disagree.none')}</p>;
+  else {
+    body = (
+      <ul className="disagree-list">
+        {cells.map((c) => (
+          <li key={`${c.optionId} ${c.factorId}`} className={`split-${spreadLevel(c.spread)}`} dir="auto">
+            {t('disagree.cell', { option: option(c.optionId), factor: factor(c.factorId), low: formatValue(d, c.low), high: formatValue(d, c.high) })}
+          </li>
+        ))}
+        {weights.map((w) => (
+          <li key={w.factorId} className={`split-${spreadLevel(w.spread)}`} dir="auto">
+            {t('disagree.weight', { factor: factor(w.factorId), low: t(`weight.${Math.round(w.low)}`), high: t(`weight.${Math.round(w.high)}`) })}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <section className="disagree" aria-labelledby="disagree-title">
+      <h3 id="disagree-title">{t('disagree.title')}</h3>
+      {body}
+    </section>
+  );
+}
+
+export function ResultsPanel({ d, results, analysis, uiLang, group }: { d: Decision; results: Results; analysis: Analysis; uiLang: string; group?: GroupResult }) {
   const pugh = d.settings.mode === 'pugh';
   const winner = d.options.find((o) => o.id === results.winnerId);
   const winnerName = winner ? optionName(d, winner, uiLang) : '';
@@ -52,11 +91,13 @@ export function ResultsPanel({ d, results, analysis, uiLang }: { d: Decision; re
   else if (analysis.robustness === 'close') verdict = { tone: 'warn', title: t('results.close'), text: t('results.closeText') };
   else verdict = { tone: 'good', title: t('results.clear'), text: t('results.clearText') };
 
-  const flips = [analysis.weightFlip, analysis.scoreFlip].filter((f): f is Flip => Boolean(f));
+  // "What flips it" talks about one score or weight; on a group's averages that would mislead.
+  const flips = group ? [] : [analysis.weightFlip, analysis.scoreFlip].filter((f): f is Flip => Boolean(f));
 
   return (
     <section className="results" aria-labelledby="results-title">
-      <h2 id="results-title">{t('results.title')}</h2>
+      <h2 id="results-title">{group ? t('results.groupTitle') : t('results.title')}</h2>
+      {group && <p className="muted small">{t('results.groupFrom', { count: group.ballots })}</p>}
       <div className={`verdict ${verdict.tone}`}>
         <strong>{verdict.title}</strong>
         {verdict.text && <p>{verdict.text}</p>}
@@ -99,6 +140,7 @@ export function ResultsPanel({ d, results, analysis, uiLang }: { d: Decision; re
           );
         })}
       </ol>
+      {group && <Disagreements d={d} result={group} uiLang={uiLang} />}
     </section>
   );
 }

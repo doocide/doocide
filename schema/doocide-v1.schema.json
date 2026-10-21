@@ -8,12 +8,26 @@
   "properties": {
     "doocide": { "const": 1, "description": "Format version." },
     "kind": {
-      "enum": ["decision", "template", "backup"],
-      "description": "decision: shared with scores. template: structure only, no scores or notes. backup: the owner's full copy, including private notes; never shared."
+      "enum": ["decision", "template", "backup", "invite", "ballot"],
+      "description": "decision: shared with scores, and optionally a group's combined results. template: structure only, no scores or notes. backup: the owner's full copy, including private notes and group data; never shared. invite: asks someone to score a group decision. ballot: one person's scores, sent back to the organizer."
     },
     "enc": { "enum": ["none"], "description": "Encryption. Only 'none' in version 1." },
-    "data": { "$ref": "#/definitions/decision" }
+    "data": { "type": "object" }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "enum": ["decision", "template", "backup"] } } },
+      "then": { "properties": { "data": { "$ref": "#/definitions/decision" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "invite" } } },
+      "then": { "properties": { "data": { "$ref": "#/definitions/invite" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "ballot" } } },
+      "then": { "properties": { "data": { "$ref": "#/definitions/ballot" } } }
+    }
+  ],
   "definitions": {
     "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
     "date": { "type": "string", "maxLength": 40, "description": "ISO 8601 date and time." },
@@ -144,8 +158,129 @@
             },
             "additionalProperties": false
           }
+        },
+        "groupResult": { "$ref": "#/definitions/groupResult" },
+        "group": {
+          "type": "object",
+          "description": "Backups only: the owner's group data (their role, the group's rules, approved ballots). Never in a shared file or link."
         }
       }
+    },
+    "score": {
+      "allOf": [{ "$ref": "#/definitions/cellRef" }],
+      "required": ["value"],
+      "properties": { "optionId": true, "factorId": true, "value": { "type": "number" } },
+      "additionalProperties": false
+    },
+    "groupSettings": {
+      "type": "object",
+      "properties": {
+        "anonymity": { "enum": ["anonymous", "named"], "description": "anonymous: ballots carry no name at all. named: ballots carry a name the sender typed, not verified. Can't change after the first ballot." },
+        "scoring": { "enum": ["blind", "open"], "description": "blind: invites carry no one's scores. open: invites carry the group's combined results so far." },
+        "weights": { "enum": ["organizer", "everyone"], "description": "Who sets importance. everyone: each ballot carries weights, combined like scores." },
+        "combine": { "enum": ["mean", "median"], "description": "How the ballots for one cell combine." },
+        "expected": { "type": "integer", "minimum": 1, "maximum": 1000, "description": "How many people are expected to send ballots." }
+      },
+      "additionalProperties": false
+    },
+    "groupResult": {
+      "type": "object",
+      "description": "A group's combined results. Numbers only: no individual ballots, no names.",
+      "required": ["ballots", "cells"],
+      "properties": {
+        "ballots": { "type": "integer", "minimum": 0, "description": "How many ballots were combined." },
+        "cells": {
+          "type": "array",
+          "maxItems": 30000,
+          "items": {
+            "allOf": [{ "$ref": "#/definitions/cellRef" }],
+            "required": ["n", "value", "low", "high", "spread"],
+            "properties": {
+              "optionId": true,
+              "factorId": true,
+              "n": { "type": "integer", "minimum": 1, "description": "Ballots that scored this cell." },
+              "value": { "type": "number", "description": "Combined score or rating." },
+              "low": { "type": "number" },
+              "high": { "type": "number" },
+              "spread": { "type": "number", "minimum": 0, "maximum": 1, "description": "Standard deviation divided by half the scale's range: 0 everyone agrees, 1 the group split between the two ends." }
+            },
+            "additionalProperties": false
+          }
+        },
+        "weights": {
+          "type": "array",
+          "maxItems": 300,
+          "items": {
+            "type": "object",
+            "required": ["factorId", "n", "value", "low", "high", "spread"],
+            "properties": {
+              "factorId": { "$ref": "#/definitions/id" },
+              "n": { "type": "integer", "minimum": 1 },
+              "value": { "type": "number", "minimum": 1, "maximum": 5 },
+              "low": { "type": "number" },
+              "high": { "type": "number" },
+              "spread": { "type": "number", "minimum": 0, "maximum": 1 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "invite": {
+      "type": "object",
+      "required": ["decision", "settings", "inviteId"],
+      "properties": {
+        "decision": { "$ref": "#/definitions/decision", "description": "Structure only, like a template. Its id is the organizer's decision id, which ballots point back to." },
+        "settings": { "$ref": "#/definitions/groupSettings" },
+        "inviteId": { "$ref": "#/definitions/id" },
+        "organizerName": { "type": "string", "maxLength": 80, "description": "Named groups only. Self-declared, never verified." },
+        "result": { "$ref": "#/definitions/groupResult", "description": "Open scoring only." }
+      },
+      "additionalProperties": false
+    },
+    "ballot": {
+      "type": "object",
+      "required": ["decisionId", "inviteId", "voterId", "revision", "scores", "pugh", "notes"],
+      "properties": {
+        "decisionId": { "$ref": "#/definitions/id" },
+        "inviteId": { "$ref": "#/definitions/id" },
+        "voterId": { "$ref": "#/definitions/id", "description": "Random, made once per person and decision. A newer ballot with the same voterId replaces the older one." },
+        "revision": { "type": "integer", "minimum": 1, "description": "Goes up each time the person sends their ballot again." },
+        "createdAt": { "$ref": "#/definitions/date", "description": "Without an author, the date only (midnight)." },
+        "author": { "type": "string", "maxLength": 80, "description": "Named groups only. Self-declared, never verified. Absent in anonymous ballots." },
+        "scores": { "type": "array", "maxItems": 30000, "items": { "$ref": "#/definitions/score" } },
+        "pugh": { "type": "array", "maxItems": 30000, "items": { "$ref": "#/definitions/score" } },
+        "weights": {
+          "type": "array",
+          "maxItems": 300,
+          "items": {
+            "type": "object",
+            "required": ["factorId", "weight"],
+            "properties": { "factorId": { "$ref": "#/definitions/id" }, "weight": { "type": "integer", "minimum": 1, "maximum": 5 } },
+            "additionalProperties": false
+          }
+        },
+        "notes": {
+          "type": "array",
+          "maxItems": 5000,
+          "description": "Shared notes only, without an author.",
+          "items": {
+            "type": "object",
+            "required": ["id", "text", "visibility"],
+            "properties": {
+              "id": { "$ref": "#/definitions/id" },
+              "optionId": { "$ref": "#/definitions/id" },
+              "factorId": { "$ref": "#/definitions/id" },
+              "text": { "type": "string", "maxLength": 4000 },
+              "visibility": { "const": "shared" },
+              "createdAt": { "$ref": "#/definitions/date" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

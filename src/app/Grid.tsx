@@ -2,14 +2,34 @@
 // factor names and option headers pinned while scrolling.
 
 import { useMemo, type CSSProperties } from 'react';
-import { cellKey, cellValues, type Results } from '../engine';
-import type { Decision } from '../format/types';
+import { cellKey, cellValues, spreadLevel, type Results } from '../engine';
+import type { CellResult, Decision, WeightResult } from '../format/types';
 import { formatNumber, t } from '../i18n';
-import { PughInput, ScoreInput, heat } from './controls';
+import { PughInput, ScoreInput, formatValue, heat } from './controls';
 import { addFactor, addOption, renameFactor, renameOption, setRating, setScore, setWeight, tidyNames, type Edit, type Target } from './edit';
 import { ExternalLink } from './ExternalLink';
 import { factorGuide, factorName, optionName } from './labels';
 import { Icon, Stars } from './ui';
+
+/** What can't be changed even when the decision is editable: a participant's copy belongs to the organizer. */
+export interface Lock {
+  structure: boolean;
+  weights: boolean;
+}
+
+/** One person's value on a cell, for the organizer's view of how the group scored it. */
+export interface VoterValue {
+  label: string;
+  value: number;
+}
+
+/** The group's combined values, shown instead of anyone's own scores. */
+export interface GroupCells {
+  cells: Map<string, CellResult>;
+  weights?: Map<string, WeightResult>;
+  /** Organizer only: each ballot's value per cell. */
+  voters?: Map<string, VoterValue[]>;
+}
 
 export interface MatrixProps {
   d: Decision;
@@ -18,6 +38,30 @@ export interface MatrixProps {
   uiLang: string;
   onEdit: (edit: Edit) => void;
   onDetail: (target: Target) => void;
+  lock?: Lock;
+  group?: GroupCells;
+}
+
+/** A combined value: one decimal, and a sign for Pugh ratings. */
+export function formatGroupValue(d: Decision, v: number): string {
+  if (d.settings.mode !== 'pugh') return formatNumber(v, 1);
+  const n = Math.round(v * 10) / 10;
+  return n === 0 ? 'S' : `${n > 0 ? '+' : '−'}${formatNumber(Math.abs(n), 1)}`;
+}
+
+/** The group's value for a cell, with the range of the ballots when they differ. */
+export function GroupValue({ d, cell }: { d: Decision; cell: CellResult | undefined }) {
+  if (!cell) return <span className="group-value empty">–</span>;
+  return (
+    <span className="group-value">
+      <strong>{formatGroupValue(d, cell.value)}</strong>
+      {cell.n > 1 && cell.low !== cell.high && (
+        <span className="range" title={t('group.rangeTitle', { count: cell.n })}>
+          {formatValue(d, cell.low)}–{formatValue(d, cell.high)}
+        </span>
+      )}
+    </span>
+  );
 }
 
 export function noteCounts(d: Decision): Map<string, number> {
@@ -56,8 +100,9 @@ export function scoreLabel(d: Decision, results: Results, optionId: string): str
   return `${r.total > 0 ? '+' : ''}${formatNumber(r.total)}`;
 }
 
-export function Grid({ d, results, readOnly, uiLang, onEdit, onDetail }: MatrixProps) {
+export function Grid({ d, results, readOnly, uiLang, onEdit, onDetail, lock, group }: MatrixProps) {
   const values = useMemo(() => cellValues(d), [d]);
+  const fixed = readOnly || Boolean(lock?.structure);
   const facts = useMemo(() => new Map(d.facts.map((f) => [cellKey(f.optionId, f.factorId), f])), [d.facts]);
   const notes = useMemo(() => noteCounts(d), [d]);
   const pugh = d.settings.mode === 'pugh';
@@ -105,7 +150,7 @@ export function Grid({ d, results, readOnly, uiLang, onEdit, onDetail }: MatrixP
                         dir="auto"
                         lang={d.lang}
                         maxLength={200}
-                        readOnly={readOnly}
+                        readOnly={fixed}
                         aria-label={t('grid.optionName')}
                         onChange={(e) => onEdit(renameOption(o.id, e.target.value))}
                         onBlur={() => onEdit(tidyNames)}
@@ -119,7 +164,7 @@ export function Grid({ d, results, readOnly, uiLang, onEdit, onDetail }: MatrixP
                 </th>
               );
             })}
-            {!readOnly && (
+            {!fixed && (
               <th className="col-add" scope="col">
                 <button className="button ghost" onClick={() => onEdit(addOption(''))}>
                   <Icon name="plus" size={18} />
@@ -145,7 +190,7 @@ export function Grid({ d, results, readOnly, uiLang, onEdit, onDetail }: MatrixP
                       dir="auto"
                       lang={d.lang}
                       maxLength={200}
-                      readOnly={readOnly}
+                      readOnly={fixed}
                       aria-label={t('grid.factorName')}
                       onChange={(e) => onEdit(renameFactor(f.id, e.target.value))}
                       onBlur={() => onEdit(tidyNames)}
@@ -162,7 +207,8 @@ export function Grid({ d, results, readOnly, uiLang, onEdit, onDetail }: MatrixP
                   )}
                 </th>
                 <td className="col-weight">
-                  <Stars value={f.weight} readOnly={readOnly} label={t('grid.importanceOf', { name })} onChange={(w) => onEdit(setWeight(f.id, w))} />
+                  <Stars value={Math.round(f.weight)} readOnly={readOnly || Boolean(lock?.weights)} label={t('grid.importanceOf', { name })} onChange={(w) => onEdit(setWeight(f.id, w))} />
+                  {group?.weights?.has(f.id) && <div className="muted small">{t('group.weightAverage', { value: formatNumber(f.weight, 1) })}</div>}
                 </td>
                 {d.options.map((o) => {
                   const key = cellKey(o.id, f.id);
@@ -172,6 +218,7 @@ export function Grid({ d, results, readOnly, uiLang, onEdit, onDetail }: MatrixP
                   const baseline = pugh && d.settings.baselineId === o.id;
                   const label = t('grid.cellLabel', { option: optionName(d, o, uiLang), factor: name });
                   const h = heat(d, value);
+                  const groupCell = group?.cells.get(key);
                   return (
                     <td
                       key={o.id}
@@ -181,11 +228,14 @@ export function Grid({ d, results, readOnly, uiLang, onEdit, onDetail }: MatrixP
                         baseline ? 'baseline' : '',
                         results.winnerId === o.id ? 'win' : '',
                         h < 0 ? 'neg' : '',
+                        groupCell && groupCell.n > 1 ? `split-${spreadLevel(groupCell.spread)}` : '',
                       ].join(' ')}
                       style={{ '--heat': Math.abs(h) } as CSSProperties}
                     >
                       {baseline ? (
                         <span className="muted small">{t('pugh.baselineCell')}</span>
+                      ) : group ? (
+                        <GroupValue d={d} cell={groupCell} />
                       ) : pugh ? (
                         <PughInput d={d} value={value} readOnly={readOnly} label={label} onChange={(v) => onEdit(setRating(o.id, f.id, v))} />
                       ) : (
@@ -204,11 +254,11 @@ export function Grid({ d, results, readOnly, uiLang, onEdit, onDetail }: MatrixP
                     </td>
                   );
                 })}
-                {!readOnly && <td className="col-add" />}
+                {!fixed && <td className="col-add" />}
               </tr>
             );
           })}
-          {!readOnly && (
+          {!fixed && (
             <tr className="add-row">
               <th className="col-factor" scope="row">
                 <button className="button ghost" onClick={() => onEdit(addFactor(''))}>

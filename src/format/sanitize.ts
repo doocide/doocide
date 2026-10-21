@@ -47,6 +47,12 @@ export function checkLink(raw: unknown): SafeLink | null {
   return { href: url.href, host, lookalike };
 }
 
+/** An ISO date and time cut back to midnight of that day, so an anonymous ballot doesn't reveal when it was made. */
+export function dayOnly(iso: string): string {
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? `${new Date(t).toISOString().slice(0, 10)}T00:00:00.000Z` : '1970-01-01T00:00:00.000Z';
+}
+
 /** Spreadsheet apps run cells that start with these characters as formulas. */
 export function escapeSpreadsheetText(text: string): string {
   return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
