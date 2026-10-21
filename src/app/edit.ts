@@ -366,6 +366,7 @@ export const refreshFromInvite = (invite: Invite, signed: boolean): Edit => (d) 
       settings: { ...invite.settings, anonymity: g.settings.anonymity },
       ...(invite.result && { result: invite.result }),
       ...(!g.organizerKey && signed && invite.key && { organizerKey: invite.key }),
+      ...(signed && invite.sealKey && { organizerSealKey: invite.sealKey }),
     },
   });
 };

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { loadTemplateText } from '@packs';
-import { appBase, decodePayload, readFragment } from '../format/codec';
+import { appBase, decodeIncoming, readFragment } from '../format/codec';
 import { adopt, emptyDecision, joinInvite } from '../format/create';
-import { checkBallot, checkInvite } from '../format/crypto';
-import type { AnyEnvelope, Ballot, Decision, Envelope, Invite, InviteEnvelope, ReceivedBallot } from '../format/types';
-import { FormatError, parseAnyEnvelopeText, parseEnvelopeText, type FormatErrorCode } from '../format/validate';
+import { checkBallot, checkInvite, createLock, openLock, openSealed, openWithPassphrase } from '../format/crypto';
+import type { AnyEnvelope, Ballot, Decision, Envelope, Invite, InviteEnvelope, PassphraseEnvelope, ReceivedBallot } from '../format/types';
+import { FormatError, parseAnyEnvelopeText, parseEnvelopeText, parseIncomingText, type FormatErrorCode, type Incoming } from '../format/validate';
 import { getLang, t, useLang } from '../i18n';
 import { BallotReview } from './BallotReview';
 import { DecisionView } from './DecisionView';
@@ -12,15 +12,30 @@ import { addBallots, refreshFromInvite, type Edit } from './edit';
 import { FILE_EXTENSION, pickFileText, pickFilesText } from './files';
 import { ImportDialog } from './ImportDialog';
 import { TemplatesDialog } from './InfoDialogs';
-import { forgetDecisionKey } from './keys';
+import { findSealer, forgetDecisionKey } from './keys';
 import { decisionTitle } from './labels';
 import { Library } from './Library';
+import { LockDialog, LockScreen, PassphrasePrompt } from './Lock';
 import { downloadBackup } from './backup';
-import { forgetBackup, getBackups } from './prefs';
-import { deleteDecision, isPersistent, listDecisions, requestPersistence, saveDecision, storagePersisted } from './store';
+import { forgetAllBackups, forgetBackup, getBackups } from './prefs';
+import {
+  deleteDecision,
+  eraseEverything,
+  forgetDataKey,
+  isPersistent,
+  listDecisions,
+  lockOn,
+  readLock,
+  requestPersistence,
+  saveDecision,
+  setDataKey,
+  storagePersisted,
+  turnLockOff,
+  turnLockOn,
+} from './store';
 import { Icon, useConfirm, useToast } from './ui';
 
-type ErrorCode = FormatErrorCode | 'template-missing' | 'ballot-unknown' | 'bad-signature';
+type ErrorCode = FormatErrorCode | 'template-missing' | 'ballot-unknown' | 'bad-signature' | 'sealed-elsewhere';
 
 type View =
   | { name: 'library' }
@@ -29,6 +44,8 @@ type View =
   /** `signed`: the invite's signature checked out. */
   | { name: 'incoming-invite'; env: InviteEnvelope; signed: boolean }
   | { name: 'review'; decisionId: string; ballots: ReceivedBallot[]; skipped: number }
+  /** A link or file locked with a passphrase, waiting for it. Backups never come from links. */
+  | { name: 'locked-share'; box: PassphraseEnvelope; source: 'link' | 'file' }
   | { name: 'error'; code: ErrorCode };
 
 const errorCode = (e: unknown): FormatErrorCode => (e instanceof FormatError ? e.code : 'bad-data');
@@ -53,8 +70,11 @@ export function App() {
   const [decisions, setDecisions] = useState<Map<string, Decision>>(new Map());
   const decisionsRef = useRef(decisions);
   const [loaded, setLoaded] = useState(false);
+  /** The library lock is on and the passphrase hasn't opened it yet. */
+  const [locked, setLocked] = useState(false);
+  const [lockEnabled, setLockEnabled] = useState(false);
   const [view, setView] = useState<View>({ name: 'library' });
-  const [dialog, setDialog] = useState<null | 'templates' | 'import'>(null);
+  const [dialog, setDialog] = useState<null | 'templates' | 'import' | 'lock'>(null);
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const [backups, setBackups] = useState(getBackups);
   const pending = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -64,19 +84,27 @@ export function App() {
     setDecisions(next);
   }, []);
 
-  useEffect(() => {
-    listDecisions().then((list) => {
-      commit(new Map(list.map((d) => [d.id, d])));
-      setLoaded(true);
-      // Only ask the browser to keep storage once there is something worth keeping.
-      (list.length ? requestPersistence() : storagePersisted()).then(setPersisted);
-    });
+  const loadLibrary = useCallback(async () => {
+    const list = await listDecisions();
+    commit(new Map(list.map((d) => [d.id, d])));
+    setLoaded(true);
+    // Only ask the browser to keep storage once there is something worth keeping.
+    (list.length ? requestPersistence() : storagePersisted()).then(setPersisted);
   }, [commit]);
 
-  const backup = useCallback((id: string) => {
+  // A locked library shows nothing, not even how many decisions it holds, until the passphrase opens it.
+  useEffect(() => {
+    readLock().then((meta) => {
+      setLockEnabled(meta !== null);
+      if (meta) setLocked(true);
+      else loadLibrary();
+    });
+  }, [loadLibrary]);
+
+  const backup = useCallback(async (id: string) => {
     const d = decisionsRef.current.get(id);
     if (!d) return;
-    downloadBackup(d);
+    await downloadBackup(d);
     setBackups(getBackups());
   }, []);
 
@@ -116,13 +144,33 @@ export function App() {
     return { name: 'incoming', env };
   }, []);
 
-  // Incoming links: "#d=..." (someone's decision, template, invite or ballot) or "#t=name" (a built-in
-  // template). They open as a read-only preview or a review screen; nothing is saved until the user says so.
+  /**
+   * Encrypted envelopes first: a passphrase-locked one waits for its passphrase; a sealed ballot opens
+   * with this device's sealing key for that decision, if it has one.
+   */
+  const openIncoming = useCallback(
+    async (incoming: Incoming, source: 'link' | 'file'): Promise<View> => {
+      if (incoming.type === 'plain') return viewFor(incoming.env);
+      const { box } = incoming;
+      if (box.enc === 'passphrase') return { name: 'locked-share', box, source };
+      const organizers = [...decisionsRef.current.values()].filter((d) => d.group?.role === 'organizer').map((d) => d.id);
+      const found = await findSealer(box.to, organizers);
+      if (!found) return { name: 'error', code: 'sealed-elsewhere' };
+      const env = parseAnyEnvelopeText(await openSealed(box, found.sealer));
+      if (env.kind !== 'ballot') return { name: 'error', code: 'invalid' };
+      return viewFor(env);
+    },
+    [viewFor],
+  );
+
+  // Incoming links: "#d=..." (someone's decision, template, invite or ballot, maybe locked or sealed)
+  // or "#t=name" (a built-in template). They open as a read-only preview or a review screen; nothing is
+  // saved until the user says so.
   const readHash = useCallback(async () => {
     const req = readFragment(location.hash);
     if (req.type === 'none') return;
     try {
-      if (req.type === 'data') setView(await viewFor(await decodePayload(req.payload)));
+      if (req.type === 'data') setView(await openIncoming(await decodeIncoming(req.payload), 'link'));
       else if (req.type === 'template') {
         const text = await loadTemplateText(req.name);
         if (!text) return setView({ name: 'error', code: 'template-missing' });
@@ -133,7 +181,7 @@ export function App() {
     } catch (e) {
       setView({ name: 'error', code: errorCode(e) });
     }
-  }, [viewFor]);
+  }, [openIncoming]);
 
   // Wait for the library: a ballot link needs the organizer's decision to land on.
   useEffect(() => {
@@ -154,18 +202,69 @@ export function App() {
     );
   }, []);
 
+  /** Writes every edit still waiting for its save. */
+  const flushSaves = useCallback(async () => {
+    const saves: Promise<void>[] = [];
+    for (const [id, timer] of pending.current) {
+      clearTimeout(timer);
+      const d = decisionsRef.current.get(id);
+      if (d) saves.push(saveDecision(d));
+    }
+    pending.current.clear();
+    await Promise.all(saves);
+  }, []);
+
   useEffect(() => {
-    const flush = () => {
-      for (const [id, timer] of pending.current) {
-        clearTimeout(timer);
-        const d = decisionsRef.current.get(id);
-        if (d) saveDecision(d);
-      }
-      pending.current.clear();
-    };
+    const flush = () => void flushSaves();
     window.addEventListener('pagehide', flush);
     return () => window.removeEventListener('pagehide', flush);
-  }, []);
+  }, [flushSaves]);
+
+  // The library lock. The passphrase is used, then forgotten: only the wrapped data key is stored.
+  const unlock = async (passphrase: string) => {
+    const meta = await readLock();
+    if (!meta) return;
+    setDataKey(await openLock(meta, passphrase));
+    setLocked(false);
+    await loadLibrary();
+  };
+
+  const lockNow = async () => {
+    await flushSaves();
+    forgetDataKey();
+    commit(new Map());
+    setLoaded(false);
+    setLocked(true);
+    go({ name: 'library' }, true);
+  };
+
+  const turnOn = async (passphrase: string) => {
+    await flushSaves();
+    const { meta, key } = await createLock(passphrase);
+    await turnLockOn(meta, key);
+    setLockEnabled(true);
+    toast(t('lock.turnedOn'));
+  };
+
+  const turnOff = async (passphrase: string) => {
+    const meta = await readLock();
+    if (!meta) return;
+    // The passphrase is asked again, so nobody at an unlocked screen can quietly remove the lock.
+    await openLock(meta, passphrase);
+    await flushSaves();
+    await turnLockOff();
+    setLockEnabled(lockOn());
+    toast(t('lock.turnedOff'));
+  };
+
+  const erase = async () => {
+    await eraseEverything();
+    forgetAllBackups();
+    setBackups(getBackups());
+    setLockEnabled(false);
+    setLocked(false);
+    await loadLibrary();
+  };
 
   const add = useCallback(
     (d: Decision) => {
@@ -215,7 +314,7 @@ export function App() {
   const openFile = async () => {
     try {
       const text = await pickFileText(`${FILE_EXTENSION},.json,application/json`);
-      if (text !== null) go(await viewFor(parseAnyEnvelopeText(text)));
+      if (text !== null) go(await openIncoming(parseIncomingText(text), 'file'));
     } catch (e) {
       setView({ name: 'error', code: errorCode(e) });
     }
@@ -229,8 +328,14 @@ export function App() {
     let skipped = picked.failed;
     for (const text of picked.texts) {
       try {
-        const env = parseAnyEnvelopeText(text);
-        if (env.kind === 'ballot' && findOrganizer([d], env.data)) ballots.push({ ballot: env.data, signature: await checkBallot(env.data) });
+        const incoming = parseIncomingText(text);
+        let env: AnyEnvelope | null = incoming.type === 'plain' ? incoming.env : null;
+        // A sealed ballot opens only with this decision's sealing key.
+        if (incoming.type === 'encrypted' && incoming.box.enc === 'sealed') {
+          const found = await findSealer(incoming.box.to, [d.id]);
+          if (found) env = parseAnyEnvelopeText(await openSealed(incoming.box, found.sealer));
+        }
+        if (env?.kind === 'ballot' && findOrganizer([d], env.data)) ballots.push({ ballot: env.data, signature: await checkBallot(env.data) });
         else skipped++;
       } catch {
         skipped++;
@@ -250,6 +355,28 @@ export function App() {
       setView({ name: 'error', code: errorCode(e) });
     }
   };
+
+  if (locked) return <LockScreen onUnlock={unlock} onErase={erase} />;
+
+  if (view.name === 'locked-share') {
+    const { box, source } = view;
+    return (
+      <PassphrasePrompt
+        backup={Boolean(box.wrappedKey)}
+        onOpen={async (passphrase) => {
+          const inner = await openWithPassphrase(box, passphrase);
+          try {
+            const env = parseAnyEnvelopeText(inner);
+            if (source === 'link' && env.kind === 'backup') throw new FormatError('invalid', 'Backups cannot travel in links');
+            setView(await viewFor(env));
+          } catch (e) {
+            setView({ name: 'error', code: errorCode(e) });
+          }
+        }}
+        onCancel={() => go({ name: 'library' }, true)}
+      />
+    );
+  }
 
   if (view.name === 'error') {
     return (
@@ -369,8 +496,12 @@ export function App() {
         onImportTable={() => setDialog('import')}
         onOpenFile={openFile}
         onDelete={remove}
+        lockEnabled={lockEnabled}
+        onLockSettings={() => setDialog('lock')}
+        onLockNow={lockNow}
       />
       {dialog === 'templates' && <TemplatesDialog onPick={pickTemplate} onClose={() => setDialog(null)} />}
+      {dialog === 'lock' && <LockDialog on={lockEnabled} onTurnOn={turnOn} onTurnOff={turnOff} onLockNow={lockNow} onClose={() => setDialog(null)} />}
       {dialog === 'import' && (
         <ImportDialog
           onCreate={(d) => {

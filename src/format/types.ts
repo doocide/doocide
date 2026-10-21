@@ -188,6 +188,8 @@ export interface Group {
   organizerName?: string;
   /** Participant: the key that signed the invite. */
   organizerKey?: string;
+  /** Participant: the organizer's sealing key from a signed invite. Ballots are sealed to it. */
+  organizerSealKey?: string;
   /** Participant: they compared short codes with the organizer and the codes matched. */
   organizerConfirmed?: boolean;
   /** Participant: the public key their ballots were signed with, to notice when this device can't sign as them. */
@@ -238,6 +240,11 @@ export interface Invite {
   organizerName?: string;
   /** Open scoring only: the group's combined results so far. */
   result?: GroupResult;
+  /**
+   * The organizer's sealing key for this decision (ECDH P-256, raw, base64url). Ballots are sealed to it,
+   * so only the organizer can open them. Covered by the invite's signature, so nobody can swap it.
+   */
+  sealKey?: string;
   /** The organizer's device key, and their signature over the rest of the invite. */
   key?: string;
   sig?: string;
@@ -253,8 +260,48 @@ export interface Invite {
 export type DecisionKind = 'decision' | 'template' | 'backup';
 export type Kind = DecisionKind | 'invite' | 'ballot';
 
-/** Reserved for milestone 2. Files using them are reported as encrypted. */
+/** none: plain JSON. passphrase: locked with a passphrase. sealed: only the holder of one key can open it. */
 export type Encryption = 'none' | 'passphrase' | 'sealed';
+
+/** How a passphrase becomes a key: PBKDF2 with SHA-256, a random salt (base64url) and an iteration count. */
+export interface Kdf {
+  name: 'PBKDF2';
+  hash: 'SHA-256';
+  iterations: number;
+  salt: string;
+}
+
+/** AES-GCM output: a fresh random 12-byte IV and the ciphertext, both base64url. */
+export interface Box {
+  iv: string;
+  ct: string;
+}
+
+/**
+ * A share or file locked with a passphrase. Nothing about the content shows outside: the whole inner
+ * envelope (compressed) is the ciphertext. Locked backups also carry `wrappedKey`: the library's data
+ * key, wrapped with the passphrase key, which in turn decrypts `ct`.
+ */
+export interface PassphraseEnvelope extends Box {
+  doocide: typeof FORMAT_VERSION;
+  enc: 'passphrase';
+  kdf: Kdf;
+  wrappedKey?: Box;
+}
+
+/**
+ * A ballot sealed to the organizer: an ephemeral ECDH P-256 key (`epk`) agrees a secret with the
+ * organizer's sealing key (`to`), HKDF turns it into an AES-GCM key. Only the organizer can open it.
+ */
+export interface SealedEnvelope extends Box {
+  doocide: typeof FORMAT_VERSION;
+  enc: 'sealed';
+  to: string;
+  epk: string;
+  salt: string;
+}
+
+export type EncryptedEnvelope = PassphraseEnvelope | SealedEnvelope;
 
 /** A decision, template or backup. */
 export interface Envelope {

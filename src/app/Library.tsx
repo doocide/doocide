@@ -24,6 +24,10 @@ interface Props {
   onImportTable: () => void;
   onOpenFile: () => void;
   onDelete: (id: string) => void;
+  /** The library lock is on (and this library is unlocked, or it wouldn't show). */
+  lockEnabled: boolean;
+  onLockSettings: () => void;
+  onLockNow: () => void;
 }
 
 export function LanguagePicker() {
@@ -69,7 +73,22 @@ export function ThemeToggle() {
   );
 }
 
-export function Library({ decisions, persistent, persisted, backups, onBackup, onOpen, onNew, onTemplates, onImportTable, onOpenFile, onDelete }: Props) {
+export function Library({
+  decisions,
+  persistent,
+  persisted,
+  backups,
+  onBackup,
+  onOpen,
+  onNew,
+  onTemplates,
+  onImportTable,
+  onOpenFile,
+  onDelete,
+  lockEnabled,
+  onLockSettings,
+  onLockNow,
+}: Props) {
   const uiLang = useLang();
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<null | 'safety' | 'about'>(null);
@@ -105,6 +124,11 @@ export function Library({ decisions, persistent, persisted, backups, onBackup, o
         <Logo />
         <span className="tagline">{t('app.tagline')}</span>
         <span className="spacer" />
+        {lockEnabled && (
+          <button className="icon-button" onClick={onLockNow} aria-label={t('lock.lockNow')} title={t('lock.lockNow')}>
+            <Icon name="lock" />
+          </button>
+        )}
         <LanguagePicker />
         <ThemeToggle />
       </header>
@@ -188,6 +212,12 @@ export function Library({ decisions, persistent, persisted, backups, onBackup, o
           <Icon name="shield" size={16} />
           {t('safety.title')}
         </button>
+        {persistent && (
+          <button className="link-button" onClick={onLockSettings}>
+            <Icon name="lock" size={16} />
+            {t('lock.title')}
+          </button>
+        )}
         <button className="link-button" onClick={() => setDialog('about')}>
           {t('about.title')}
         </button>

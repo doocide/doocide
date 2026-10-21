@@ -43,7 +43,8 @@ describe('language packs', () => {
       ...[1, 2, 3, 4, 5].map((n) => `safety.${n}`),
       ...['score', 'results', 'setup'].map((n) => `tabs.${n}`),
       ...['auto', 'light', 'dark'].map((n) => `theme.${n}`),
-      ...['too-big', 'too-deep', 'bad-data', 'not-doocide', 'newer-version', 'encrypted', 'invalid', 'template-missing', 'ballot-unknown'].map((n) => `error.${n}`),
+      ...['short', 'ok', 'strong'].map((n) => `share.strength.${n}`),
+      ...['too-big', 'too-deep', 'bad-data', 'not-doocide', 'newer-version', 'encrypted', 'invalid', 'template-missing', 'ballot-unknown', 'bad-signature', 'sealed-elsewhere'].map((n) => `error.${n}`),
     ];
     for (const key of [...used, ...dynamic]) expect(en, key).toHaveProperty([key]);
   });

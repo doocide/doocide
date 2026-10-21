@@ -75,8 +75,11 @@ export function resultsEnvelope(d: Decision, result: GroupResult): Envelope {
   };
 }
 
-/** Asks people to score: the structure (like a template), the group's rules, and in open scoring the results so far. */
-export function inviteEnvelope(d: Decision, result?: GroupResult): InviteEnvelope {
+/**
+ * Asks people to score: the structure (like a template), the group's rules, in open scoring the
+ * results so far, and the organizer's sealing key so ballots come back sealed.
+ */
+export function inviteEnvelope(d: Decision, result?: GroupResult, sealKey?: string): InviteEnvelope {
   const g = d.group;
   if (!g || g.role !== 'organizer') throw new Error('Only the organizer of a group decision can invite');
   const named = g.settings.anonymity === 'named';
@@ -86,6 +89,7 @@ export function inviteEnvelope(d: Decision, result?: GroupResult): InviteEnvelop
     inviteId: g.inviteId,
     ...(named && g.myName && { organizerName: g.myName }),
     ...(g.settings.scoring === 'open' && result && { result: copyResult(result) }),
+    ...(sealKey && { sealKey }),
   };
   return { doocide: FORMAT_VERSION, kind: 'invite', enc: 'none', data };
 }

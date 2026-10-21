@@ -11,6 +11,7 @@ import {
   jsonDepth,
   matchBallot,
   parseAnyEnvelopeText,
+  readIncoming,
   parseEnvelopeText,
   validateAnyEnvelope,
   validateBallot,
@@ -337,5 +338,35 @@ describe('invites and ballots from others', () => {
     });
     const out = validateEnvelope({ doocide: 1, kind: 'decision', enc: 'none', data: d }).data.groupResult!;
     expect(out.cells).toEqual([{ optionId: 'a', factorId: 'price', n: 3, value: 10, low: 0, high: 10, spread: 1 }]);
+  });
+});
+
+describe('encrypted files from others', () => {
+  const box = { doocide: 1, enc: 'passphrase', kdf: { name: 'PBKDF2', hash: 'SHA-256', iterations: 600_000, salt: 'A'.repeat(22) }, iv: 'A'.repeat(16), ct: 'AAAA' };
+  const err = (raw: unknown) => {
+    try {
+      readIncoming(raw);
+      return 'ok';
+    } catch (e) {
+      return e instanceof FormatError ? e.code : 'other';
+    }
+  };
+
+  it('come back unopened, for the app to ask for a passphrase or find a key', () => {
+    expect(readIncoming(box).type).toBe('encrypted');
+    expect(readIncoming({ doocide: 1, kind: 'decision', enc: 'none', data: sampleDecision() }).type).toBe('plain');
+  });
+
+  it('are checked before any decryption is tried', () => {
+    expect(err({ ...box, iv: 'A'.repeat(20) })).toBe('invalid');
+    expect(err({ ...box, ct: 'A'.repeat(LIMITS.fileBytes + 1) })).toBe('too-big');
+    expect(err({ ...box, kdf: { ...box.kdf, iterations: 5_000_000 } })).toBe('too-big');
+    expect(err({ ...box, kdf: { ...box.kdf, name: 'scrypt' } })).toBe('newer-version');
+    expect(err({ doocide: 1, enc: 'sealed', iv: box.iv, ct: box.ct, to: 'k', salt: 'A'.repeat(22) })).toBe('invalid');
+    expect(err({ ...box, doocide: 2 })).toBe('newer-version');
+  });
+
+  it('are still refused where only plain files make sense', () => {
+    expect(() => validateEnvelope(box)).toThrow(expect.objectContaining({ code: 'encrypted' }));
   });
 });

@@ -4,16 +4,52 @@
   "title": "Doocide file, version 1",
   "description": "A decision matrix (Pugh Matrix): options compared on weighted factors. Files use the .doocide extension and are plain JSON. To fill a template with an AI assistant: keep every id, add options and factors with new short ids, write evidence as facts, and leave scores to the person deciding.",
   "type": "object",
-  "required": ["doocide", "kind", "data"],
+  "required": ["doocide"],
   "properties": {
     "doocide": { "const": 1, "description": "Format version." },
     "kind": {
       "enum": ["decision", "template", "backup", "invite", "ballot"],
       "description": "decision: shared with scores, and optionally a group's combined results. template: structure only, no scores or notes. backup: the owner's full copy, including private notes and group data; never shared. invite: asks someone to score a group decision. ballot: one person's scores, sent back to the organizer."
     },
-    "enc": { "enum": ["none"], "description": "Encryption. Only 'none' in version 1." },
-    "data": { "type": "object" }
+    "enc": {
+      "enum": ["none", "passphrase", "sealed"],
+      "description": "none: plain JSON. passphrase: the whole file, compressed (deflate-raw), is AES-GCM ciphertext under a PBKDF2 key. sealed: the same, under a key agreed between a one-time ECDH P-256 key and the recipient's sealing key, through HKDF-SHA-256."
+    },
+    "data": { "type": "object" },
+    "kdf": {
+      "type": "object",
+      "required": ["name", "hash", "iterations", "salt"],
+      "properties": {
+        "name": { "const": "PBKDF2" },
+        "hash": { "const": "SHA-256" },
+        "iterations": { "type": "integer", "minimum": 100000, "maximum": 2000000 },
+        "salt": { "type": "string", "pattern": "^[A-Za-z0-9_-]{16,64}$" }
+      },
+      "additionalProperties": false
+    },
+    "iv": { "type": "string", "pattern": "^[A-Za-z0-9_-]{16}$", "description": "AES-GCM IV, 12 random bytes, never reused." },
+    "ct": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+    "wrappedKey": {
+      "type": "object",
+      "description": "Locked backups only: the library's data key, wrapped (AES-GCM) with the passphrase key. It decrypts ct.",
+      "required": ["iv", "ct"],
+      "properties": { "iv": { "type": "string" }, "ct": { "type": "string" } },
+      "additionalProperties": false
+    },
+    "to": { "$ref": "#/definitions/publicKey", "description": "Sealed: the recipient's sealing key." },
+    "epk": { "$ref": "#/definitions/publicKey", "description": "Sealed: the one-time ECDH key." },
+    "salt": { "type": "string", "pattern": "^[A-Za-z0-9_-]{16,64}$", "description": "Sealed: the HKDF salt." }
   },
+  "if": { "properties": { "enc": { "enum": ["passphrase", "sealed"] } }, "required": ["enc"] },
+  "then": {
+    "required": ["iv", "ct"],
+    "not": { "anyOf": [{ "required": ["kind"] }, { "required": ["data"] }] },
+    "allOf": [
+      { "if": { "properties": { "enc": { "const": "passphrase" } } }, "then": { "required": ["kdf"] } },
+      { "if": { "properties": { "enc": { "const": "sealed" } } }, "then": { "required": ["to", "epk", "salt"] } }
+    ]
+  },
+  "else": { "required": ["kind", "data"] },
   "allOf": [
     {
       "if": { "properties": { "kind": { "enum": ["decision", "template", "backup"] } } },
@@ -246,6 +282,7 @@
         "inviteId": { "$ref": "#/definitions/id" },
         "organizerName": { "type": "string", "maxLength": 80, "description": "Named groups only. Self-declared, never verified." },
         "result": { "$ref": "#/definitions/groupResult", "description": "Open scoring only." },
+        "sealKey": { "$ref": "#/definitions/publicKey", "description": "The organizer's sealing key (ECDH P-256) for this decision. Ballots are sealed to it." },
         "key": { "$ref": "#/definitions/publicKey", "description": "The organizer's device key." },
         "sig": { "$ref": "#/definitions/signature" }
       },

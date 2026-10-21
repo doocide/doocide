@@ -2,8 +2,8 @@
 // are counted from the very envelope that will be sent (see src/format/share.ts).
 
 import { useEffect, useState } from 'react';
-import { makeLink } from '../format/codec';
-import { signBallot, signInvite } from '../format/crypto';
+import { makeEncryptedLink, makeLink } from '../format/codec';
+import { lockWithPassphrase, sealTo, signBallot, signInvite } from '../format/crypto';
 import { newId } from '../format/ids';
 import { LIMITS } from '../format/limits';
 import {
@@ -18,12 +18,12 @@ import {
   shareSummary,
   type ShareKind,
 } from '../format/share';
-import type { AnyEnvelope, BallotEnvelope, Decision, GroupResult } from '../format/types';
+import type { AnyEnvelope, BallotEnvelope, Decision, EncryptedEnvelope, GroupResult } from '../format/types';
 import { t } from '../i18n';
 import { useDeviceKey, useShortCode } from './codes';
 import { markSent, restartVoter, setMyName, type Edit } from './edit';
 import { FILE_EXTENSION, canShareNatively, copyText, downloadText, safeFileName, shareNatively } from './files';
-import { ballotKey, deviceKey } from './keys';
+import { ballotKey, deviceKey, sealingKey } from './keys';
 import { decisionTitle } from './labels';
 import { Dialog, Icon, Segmented, useToast } from './ui';
 
@@ -106,10 +106,43 @@ function Actions({ onFile, onLink, disabled }: { onFile: () => void | Promise<vo
   );
 }
 
-const saveEnvelope = (env: AnyEnvelope, name: string) => {
-  assertShareable(env);
-  downloadText(JSON.stringify(env, null, 2), `${name}${FILE_EXTENSION}`, 'application/json');
+/** What leaves the device: a checked envelope, or one that was checked and then sealed or locked. */
+type Outgoing = AnyEnvelope | EncryptedEnvelope;
+
+const saveOutgoing = (out: Outgoing, name: string) => {
+  if (out.enc === 'none') assertShareable(out);
+  downloadText(JSON.stringify(out, null, 2), `${name}${FILE_EXTENSION}`, 'application/json');
 };
+
+const linkFor = (out: Outgoing) => (out.enc === 'none' ? makeLink(out, location.href) : makeEncryptedLink(out, location.href));
+
+/** How good a passphrase is: too short to use, fine, or strong. Length matters most; several random words are best. */
+export function passphraseStrength(p: string): 'short' | 'ok' | 'strong' {
+  const chars = [...p.trim()].length;
+  const words = p.trim().split(/\s+/).filter(Boolean).length;
+  if (chars < 8) return 'short';
+  return chars >= 16 || words >= 4 ? 'strong' : 'ok';
+}
+
+/** "Lock with a passphrase": off, or on with the passphrase typed in the open so it can be read out to others. */
+function PassphraseOption({ on, value, onToggle, onChange }: { on: boolean; value: string; onToggle: (on: boolean) => void; onChange: (v: string) => void }) {
+  const strength = passphraseStrength(value);
+  return (
+    <div className="field">
+      <label className="check">
+        <input type="checkbox" checked={on} onChange={(e) => onToggle(e.target.checked)} />
+        {t('share.lock')}
+      </label>
+      {on && (
+        <>
+          <input value={value} autoComplete="off" spellCheck={false} aria-label={t('share.passphrase')} placeholder={t('share.passphrase')} onChange={(e) => onChange(e.target.value)} />
+          <span className={strength === 'short' ? 'muted small warn-text' : 'muted small'}>{t(`share.strength.${strength}`)}</span>
+          <span className="muted small">{t('share.passphraseApart')}</span>
+        </>
+      )}
+    </div>
+  );
+}
 
 /** A participant sends their ballot back to the organizer. */
 function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) {
@@ -135,7 +168,8 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
   }, [d]);
 
   // Each send counts up the revision, so the organizer's app keeps the newest ballot from this person.
-  const send = async (): Promise<BallotEnvelope> => {
+  // The ballot is checked, signed, and then sealed so only the organizer can open it.
+  const send = async (): Promise<Outgoing> => {
     const signer = await ballotKey(d);
     const base = g.key && g.key !== signer.publicKey ? restartVoter(withName) : withName;
     const next = markSent({ ...base, group: { ...base.group!, key: signer.publicKey } });
@@ -143,7 +177,7 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
     const env = ballotEnvelope(next);
     const signed: BallotEnvelope = { ...env, data: await signBallot(env.data, signer) };
     assertShareable(signed);
-    return signed;
+    return g.organizerSealKey ? sealTo(g.organizerSealKey, JSON.stringify(signed)) : signed;
   };
 
   const included = [
@@ -152,6 +186,7 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
     t('share.countSharedNotes', { count: s.sharedNotes }),
     s.name ? t('share.asName', { name: s.name }) : named ? t('share.nameMissing') : t('share.noName'),
     named ? t('share.signedDevice', { code: myCode ?? '…' }) : t('share.signedDecision'),
+    ...(g.organizerSealKey ? [t('share.sealedBallot')] : []),
   ];
 
   return (
@@ -182,8 +217,8 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
       {!link ? (
         <Actions
           disabled={missingName || !signingKey}
-          onFile={async () => saveEnvelope(await send(), `ballot-${newId(6)}`)}
-          onLink={async () => setLink(await makeLink(await send(), location.href))}
+          onFile={async () => saveOutgoing(await send(), `ballot-${newId(6)}`)}
+          onLink={async () => setLink(await linkFor(await send()))}
         />
       ) : (
         <LinkBox link={link} title={decisionTitle(d)} />
@@ -202,6 +237,9 @@ function OwnerShare({ d, result, initial, onClose }: Props) {
   const organizer = d.group?.role === 'organizer';
   const [kind, setKind] = useState<Kind>(initial ?? (organizer ? 'invite' : 'decision'));
   const [link, setLink] = useState<string | null>(null);
+  const [locking, setLocking] = useState(false);
+  const [passphrase, setPassphrase] = useState('');
+  const [busy, setBusy] = useState(false);
   const g = d.group;
   // Invites are signed with this device's key, so people can check by its code that an invite is yours.
   const myKey = useDeviceKey(organizer);
@@ -209,10 +247,27 @@ function OwnerShare({ d, result, initial, onClose }: Props) {
 
   const envelope = async (): Promise<AnyEnvelope> => {
     if (kind === 'invite') {
-      const env = inviteEnvelope(d, result ?? undefined);
+      // The sealing key rides in the invite, under its signature, so ballots come back sealed to it.
+      const env = inviteEnvelope(d, result ?? undefined, (await sealingKey(d.id)).publicKey);
       return { ...env, data: await signInvite(env.data, await deviceKey()) };
     }
     return kind === 'results' && result ? resultsEnvelope(d, result) : shareEnvelope(d, kind === 'template' ? 'template' : 'decision');
+  };
+
+  /** Checked first, then locked when asked: the passphrase never leaves this device. */
+  const outgoing = async (): Promise<Outgoing> => {
+    const env = await envelope();
+    assertShareable(env);
+    return locking ? lockWithPassphrase(JSON.stringify(env), passphrase) : env;
+  };
+
+  const run = async (task: () => Promise<void>) => {
+    setBusy(true);
+    try {
+      await task();
+    } finally {
+      setBusy(false);
+    }
   };
 
   let included: string[];
@@ -230,6 +285,7 @@ function OwnerShare({ d, result, initial, onClose }: Props) {
       g.settings.scoring === 'blind' ? t('share.blindNone') : s.resultBallots ? t('share.openResults', { count: s.resultBallots }) : t('share.openNone'),
       g.settings.anonymity === 'anonymous' ? t('share.inviteAnonymous') : s.organizerName ? t('share.inviteNamedAs', { name: s.organizerName }) : t('share.inviteNamed'),
       t('share.signedDevice', { code: myCode ?? '…' }),
+      t('share.inviteSealed'),
     ];
     leftOut = [
       t('share.ownScores', { count: s.ownScores }),
@@ -288,17 +344,25 @@ function OwnerShare({ d, result, initial, onClose }: Props) {
         options={kinds}
       />
       <p className="muted small">{help}</p>
-      <Preview title={decisionTitle(d)} included={included} leftOut={leftOut} />
-      <p className="callout">{t('share.forever')}</p>
+      <Preview title={decisionTitle(d)} included={locking ? [...included, t('share.locked')] : included} leftOut={leftOut} />
+      <PassphraseOption
+        on={locking}
+        value={passphrase}
+        onToggle={(on) => {
+          setLocking(on);
+          setLink(null);
+        }}
+        onChange={(v) => {
+          setPassphrase(v);
+          setLink(null);
+        }}
+      />
+      <p className="callout">{locking ? t('share.foreverLocked') : t('share.forever')}</p>
       {!link ? (
         <Actions
-          disabled={kind === 'invite' && !myKey}
-          onFile={async () => saveEnvelope(await envelope(), fileName)}
-          onLink={async () => {
-            const env = await envelope();
-            assertShareable(env);
-            setLink(await makeLink(env, location.href));
-          }}
+          disabled={busy || (kind === 'invite' && !myKey) || (locking && passphraseStrength(passphrase) === 'short')}
+          onFile={() => run(async () => saveOutgoing(await outgoing(), fileName))}
+          onLink={() => run(async () => setLink(await linkFor(await outgoing())))}
         />
       ) : (
         <LinkBox link={link} title={decisionTitle(d)} />

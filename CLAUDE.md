@@ -12,7 +12,9 @@ Milestone 2b released as v0.3.0 (2026-10-21): signed invites and ballots (a devi
 
 v0.3.1 (2026-10-21): a layout toggle saved in the decision file (`settings.rows`). Desktop shows factors or options as rows; phones score one factor or one option at a time. CSV export follows the layout.
 
-Next: the rest of milestone 2 in order: 2c passphrase and sealed encryption plus the optional library lock, 2d collecting ballots through a synced cloud folder. Then milestone 3 (AI copy-prompt and MCP, public sharing, room mode with QR codes, decision journal, ~35 languages).
+Milestone 2c released as v0.4.0 (2026-10-21): links and files locked with a passphrase (PBKDF2-SHA-256, 600k iterations, then AES-GCM), ballots sealed to the organizer (a per-decision ECDH P-256 sealing key carried in the signed invite, a one-time key per ballot, HKDF, AES-GCM), and the optional library lock (a random data key wrapped with the passphrase key; locked rows and backups). Option and factor names wrap in full.
+
+Next: 2d, collecting ballots through a synced cloud folder, which finishes milestone 2. Then milestone 3 (AI copy-prompt and MCP, public sharing, room mode with QR codes, decision journal, ~35 languages).
 
 ## Stack and commands
 
@@ -25,9 +27,9 @@ React 19 + TypeScript 7 + Vite 8, built into one HTML file (vite-plugin-singlefi
 
 ## Layout and licenses
 
-- `src/format/` (MIT): file format, checks (`validate.ts`), cleaning (`sanitize.ts`), links (`codec.ts`), the only share path (`share.ts`), signatures and short codes (`crypto.ts`, the only file allowed to use `crypto.subtle`), tables and CSV.
+- `src/format/` (MIT): file format, checks (`validate.ts`), cleaning (`sanitize.ts`), links (`codec.ts`), the only share path (`share.ts`), signatures, short codes and encryption (`crypto.ts`, the only file allowed to use `crypto.subtle`), tables and CSV.
 - `src/engine/` (MIT): scoring and sensitivity ("what flips the winner").
-- `src/app/` (AGPL): the UI. `net.ts` is the only file allowed to call `fetch`; `prefs.ts` the only one allowed to use localStorage; `keys.ts` picks and keeps signing keys (non-extractable, in IndexedDB).
+- `src/app/` (AGPL): the UI. `net.ts` is the only file allowed to call `fetch`; `prefs.ts` the only one allowed to use localStorage; `keys.ts` picks and keeps signing and sealing keys (non-extractable, in IndexedDB); `store.ts` encrypts stored decisions while the library lock is on; `Lock.tsx` holds every passphrase screen.
 - `src/i18n/`: language system; packs in `src/i18n/locales/*.json`, list in `languages.ts`.
 - `src/packs/`: `remote.ts` (online, fetch packs on demand) or `embedded.ts` (offline build), chosen by Vite alias `@packs`.
 - `tools/`: build plugins (security policy hashes, static packs).

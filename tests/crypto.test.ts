@@ -3,12 +3,33 @@
 import { describe, expect, it } from 'vitest';
 import { addBallots, confirmKey, setBallotIncluded } from '../src/app/edit';
 import { reviewBallots } from '../src/engine';
-import { decodePayload, encodePayload } from '../src/format/codec';
-import { canonicalJson, checkBallot, checkInvite, generateSigner, shortCode, signBallot, signInvite } from '../src/format/crypto';
-import { ballotEnvelope, inviteEnvelope } from '../src/format/share';
-import type { AnyEnvelope, Ballot, Invite } from '../src/format/types';
-import { validateBallot, validateInvite } from '../src/format/validate';
-import { ballotFrom, groupDecision, participantCopy, randomDecision } from './fixtures';
+import { decodeIncoming, decodePayload, encodePayload, makeEncryptedLink } from '../src/format/codec';
+import {
+  PBKDF2_ITERATIONS,
+  WrongKey,
+  canonicalJson,
+  checkBallot,
+  checkInvite,
+  createLock,
+  decryptJson,
+  encryptBytes,
+  encryptJson,
+  generateSealer,
+  generateSigner,
+  lockBackup,
+  lockWithPassphrase,
+  openLock,
+  openSealed,
+  openWithPassphrase,
+  sealTo,
+  shortCode,
+  signBallot,
+  signInvite,
+} from '../src/format/crypto';
+import { backupEnvelope, ballotEnvelope, inviteEnvelope, shareEnvelope } from '../src/format/share';
+import type { AnyEnvelope, Ballot, Invite, Kdf, PassphraseEnvelope } from '../src/format/types';
+import { parseAnyEnvelopeText, validateBallot, validateEncrypted, validateInvite } from '../src/format/validate';
+import { PRIVATE_MARKER, ballotFrom, groupDecision, participantCopy, randomDecision, sampleDecision } from './fixtures';
 
 /** What the receiving app sees: the signed data sent through a real link and read back. */
 async function overTheWire(env: AnyEnvelope): Promise<AnyEnvelope> {
@@ -151,4 +172,122 @@ describe('keys', () => {
     const anonymous = groupDecision({ anonymity: 'anonymous' });
     expect(confirmKey('k'.repeat(87))(anonymous)).toBe(anonymous);
   });
+});
+
+// Encryption is slow on purpose (600,000 PBKDF2 rounds), so these tests get room to breathe.
+const SLOW = 60_000;
+
+describe('passphrase locks', () => {
+  const env = () => shareEnvelope(sampleDecision(), 'decision');
+
+  it(
+    'open with the right passphrase after travelling through a link',
+    async () => {
+      const locked = await lockWithPassphrase(JSON.stringify(env()), 'four random words here');
+      const incoming = await decodeIncoming((await makeEncryptedLink(locked, 'https://doocide.github.io/')).split('#d=')[1]!);
+      if (incoming.type !== 'encrypted' || incoming.box.enc !== 'passphrase') throw new Error('expected a locked envelope');
+      const inner = parseAnyEnvelopeText(await openWithPassphrase(incoming.box, '  four random words here '));
+      expect(inner.kind).toBe('decision');
+    },
+    SLOW,
+  );
+
+  it(
+    "don't open with a wrong passphrase, or when anything was changed",
+    async () => {
+      const locked = await lockWithPassphrase(JSON.stringify(env()), 'correct horse battery');
+      await expect(openWithPassphrase(locked, 'wrong horse battery')).rejects.toBeInstanceOf(WrongKey);
+      const flip = (b64: string) => (b64[0] === 'A' ? 'B' : 'A') + b64.slice(1);
+      await expect(openWithPassphrase({ ...locked, ct: flip(locked.ct) }, 'correct horse battery')).rejects.toBeInstanceOf(WrongKey);
+      await expect(openWithPassphrase({ ...locked, iv: flip(locked.iv) }, 'correct horse battery')).rejects.toBeInstanceOf(WrongKey);
+      await expect(openWithPassphrase({ ...locked, kdf: { ...locked.kdf, salt: flip(locked.kdf.salt) } }, 'correct horse battery')).rejects.toBeInstanceOf(WrongKey);
+    },
+    SLOW,
+  );
+
+  it(
+    'use a fresh salt and a fresh IV every time',
+    async () => {
+      const json = JSON.stringify(env());
+      const [a, b] = await Promise.all([lockWithPassphrase(json, 'same passphrase'), lockWithPassphrase(json, 'same passphrase')]);
+      expect(a.kdf.salt).not.toBe(b.kdf.salt);
+      expect(a.iv).not.toBe(b.iv);
+      expect(a.ct).not.toBe(b.ct);
+      expect(a.kdf.iterations).toBe(PBKDF2_ITERATIONS);
+    },
+    SLOW,
+  );
+
+  it("refuse key settings that would freeze the page or protect nothing, before any work is done", async () => {
+    const locked = { doocide: 1, enc: 'passphrase', kdf: { name: 'PBKDF2', hash: 'SHA-256', iterations: 3_000_000, salt: 'A'.repeat(22) }, iv: 'A'.repeat(16), ct: 'AAAA' };
+    expect(() => validateEncrypted(locked)).toThrow(expect.objectContaining({ code: 'too-big' }));
+    expect(() => validateEncrypted({ ...locked, kdf: { ...locked.kdf, iterations: 1_000 } })).toThrow(expect.objectContaining({ code: 'invalid' }));
+    const started = Date.now();
+    await expect(openWithPassphrase({ ...(locked as PassphraseEnvelope), kdf: { ...locked.kdf, iterations: 900_000_000 } as Kdf }, 'x')).rejects.toBeInstanceOf(WrongKey);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+});
+
+describe('IVs', () => {
+  it('are never reused with a key: 1,000 encryptions, 1,000 different IVs', async () => {
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    const ivs = new Set<string>();
+    for (let i = 0; i < 1_000; i++) ivs.add((await encryptBytes(key, new Uint8Array([1, 2, 3]))).iv);
+    expect(ivs.size).toBe(1_000);
+  });
+});
+
+describe('sealed ballots', () => {
+  const ballotJson = () => JSON.stringify(ballotEnvelope(participantCopy(groupDecision({ anonymity: 'named' }))));
+
+  it('open only with the organizer sealing key they were sealed to', async () => {
+    const organizer = await generateSealer();
+    const someoneElse = await generateSealer();
+    const sealed = await sealTo(organizer.publicKey, ballotJson());
+    expect(parseAnyEnvelopeText(await openSealed(sealed, organizer)).kind).toBe('ballot');
+    await expect(openSealed(sealed, someoneElse)).rejects.toBeInstanceOf(WrongKey);
+    await expect(openSealed({ ...sealed, to: someoneElse.publicKey }, someoneElse)).rejects.toBeInstanceOf(WrongKey);
+  });
+
+  it("can't be re-addressed or paired with another one-time key", async () => {
+    const organizer = await generateSealer();
+    const a = await sealTo(organizer.publicKey, ballotJson());
+    const b = await sealTo(organizer.publicKey, ballotJson());
+    expect(a.epk).not.toBe(b.epk);
+    await expect(openSealed({ ...a, epk: b.epk }, organizer)).rejects.toBeInstanceOf(WrongKey);
+    await expect(openSealed({ ...a, salt: b.salt }, organizer)).rejects.toBeInstanceOf(WrongKey);
+  });
+});
+
+describe('the library lock', () => {
+  it(
+    'stores only the passphrase settings and a wrapped key, and opens only with the passphrase',
+    async () => {
+      const { meta, key } = await createLock('library passphrase words');
+      expect(JSON.stringify(meta)).not.toContain('library passphrase');
+      expect(key.extractable).toBe(false);
+      const row = await encryptJson(key, sampleDecision());
+      expect(JSON.stringify(row)).not.toContain(PRIVATE_MARKER);
+      const reopened = await openLock(meta, 'library passphrase words');
+      expect(JSON.parse(await decryptJson(reopened, row)).id).toBe('dec1');
+      expect(reopened.extractable).toBe(false);
+      await expect(openLock(meta, 'not it')).rejects.toBeInstanceOf(WrongKey);
+    },
+    SLOW,
+  );
+
+  it(
+    'locks backups too, and the same passphrase opens them on any device',
+    async () => {
+      const { meta, key } = await createLock('library passphrase words');
+      const locked = await lockBackup(JSON.stringify(backupEnvelope(sampleDecision())), meta, key);
+      expect(JSON.stringify(locked)).not.toContain(PRIVATE_MARKER);
+      expect(locked.wrappedKey).toEqual(meta.wrapped);
+      const restored = parseAnyEnvelopeText(await openWithPassphrase(locked, 'library passphrase words'));
+      expect(restored.kind).toBe('backup');
+      // Locked backups never go in links.
+      await expect(makeEncryptedLink(locked, 'https://doocide.github.io/')).rejects.toThrow();
+    },
+    SLOW,
+  );
 });

@@ -46,6 +46,11 @@ export function markBackedUp(id: string) {
   write({ backups: { ...getBackups(), [id]: new Date().toISOString() } });
 }
 
+/** Forgets every backup date, when everything stored is erased. */
+export function forgetAllBackups() {
+  write({ backups: {} });
+}
+
 export function forgetBackup(id: string) {
   const backups = getBackups();
   delete backups[id];

@@ -4,8 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { addBallots, confirmKey, endGroup, setGroupSettings, startGroup } from '../src/app/edit';
 import { ballotKey, deviceKey, forgetDecisionKey } from '../src/app/keys';
 import { ballotStatus, groupView } from '../src/engine';
-import { checkBallot, generateSigner, signBallot } from '../src/format/crypto';
-import { decodePayload, encodePayload, inflateCapped, makeLink, readFragment } from '../src/format/codec';
+import { joinInvite } from '../src/format/create';
+import { checkBallot, generateSealer, generateSigner, lockWithPassphrase, sealTo, signBallot } from '../src/format/crypto';
+import { decodePayload, encodePayload, inflateCapped, makeEncryptedLink, makeLink, readFragment } from '../src/format/codec';
 import {
   assertShareable,
   backupEnvelope,
@@ -316,4 +317,38 @@ describe('anonymity and signatures', () => {
     expect(confirmKey(signer.publicKey)(anonymous)).toBe(anonymous);
   });
   it.todo('an invite code is accepted once, and no record links codes to people (milestone 3, room mode)');
+});
+
+describe('encryption keeps contents private', () => {
+  it(
+    'a passphrase-locked share shows nothing of what it holds',
+    async () => {
+      const d = sampleDecision();
+      const locked = await lockWithPassphrase(JSON.stringify(shareEnvelope(d, 'decision')), 'a long passphrase');
+      for (const json of [JSON.stringify(locked), await linkJson(await makeEncryptedLink(locked, 'https://doocide.github.io/'))]) {
+        expect(json).not.toContain(SHARED_MARKER);
+        expect(json).not.toContain(d.title);
+        expect(json).not.toContain('"kind"');
+        expect(json).not.toContain('a long passphrase');
+      }
+    },
+    60_000,
+  );
+
+  it('a sealed ballot shows nothing of what it holds, not even its name or voter id', async () => {
+    const organizer = await generateSealer();
+    const p = participantCopy(groupDecision({ anonymity: 'named' }));
+    const sealed = await sealTo(organizer.publicKey, JSON.stringify(ballotEnvelope(p)));
+    const json = JSON.stringify(sealed);
+    expect(json).not.toContain(NAME_MARKER);
+    expect(json).not.toContain(SHARED_MARKER);
+    expect(json).not.toContain(p.group!.voterId!);
+  });
+
+  it('participants only trust a sealing key that came in a signed invite', async () => {
+    const organizer = groupDecision();
+    const invite = inviteEnvelope(organizer, undefined, (await generateSealer()).publicKey).data;
+    expect(joinInvite(invite, 'en', false).group!.organizerSealKey).toBeUndefined();
+    expect(joinInvite(invite, 'en', true).group!.organizerSealKey).toBe(invite.sealKey);
+  });
 });

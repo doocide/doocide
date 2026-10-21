@@ -3,7 +3,7 @@
 // (no prototype pollution).
 
 import { ID_PATTERN, newId } from './ids';
-import { LIMITS } from './limits';
+import { ITERATIONS, LIMITS } from './limits';
 import { checkLink, cleanText, dayOnly } from './sanitize';
 import {
   FORMAT_VERSION,
@@ -15,6 +15,7 @@ import {
   type CellResult,
   type Decision,
   type DecisionKind,
+  type EncryptedEnvelope,
   type Envelope,
   type Fact,
   type Factor,
@@ -149,6 +150,68 @@ export function validateAnyEnvelope(raw: unknown): AnyEnvelope {
   if (typeof kind === 'string') throw new FormatError('newer-version');
   throw new FormatError('invalid', 'Unknown kind');
 }
+
+/** What came in: a plain envelope, or an encrypted one still to be opened. */
+export type Incoming = { type: 'plain'; env: AnyEnvelope } | { type: 'encrypted'; box: EncryptedEnvelope };
+
+const b64 = (v: unknown, min: number, max: number): string | undefined =>
+  typeof v === 'string' && v.length >= min && v.length <= max && /^[A-Za-z0-9_-]+$/.test(v) ? v : undefined;
+
+/** An AES-GCM IV and ciphertext. The IV is always 12 bytes (16 characters). */
+function cleanBox(o: Obj, maxCt: number): { iv: string; ct: string } {
+  const rawCt = get(o, 'ct');
+  if (typeof rawCt === 'string' && rawCt.length > maxCt) throw new FormatError('too-big');
+  const iv = b64(get(o, 'iv'), 16, 16);
+  const ct = b64(rawCt, 1, maxCt);
+  if (!iv || !ct) throw new FormatError('invalid', 'Damaged encrypted data');
+  return { iv, ct };
+}
+
+/** The outside of an encrypted envelope, checked before any decryption is tried. Nothing inside is read here. */
+export function validateEncrypted(raw: Obj): EncryptedEnvelope {
+  const enc = get(raw, 'enc');
+  const box = cleanBox(raw, LIMITS.fileBytes);
+  if (enc === 'passphrase') {
+    const k = get(raw, 'kdf');
+    if (!isObj(k)) throw new FormatError('invalid', 'Missing key settings');
+    if (get(k, 'name') !== 'PBKDF2' || get(k, 'hash') !== 'SHA-256') throw new FormatError('newer-version');
+    const iterations = get(k, 'iterations');
+    if (typeof iterations !== 'number' || !Number.isInteger(iterations)) throw new FormatError('invalid', 'Bad key settings');
+    // A file asking for far more work than Doocide ever uses could freeze the page.
+    if (iterations > ITERATIONS.max) throw new FormatError('too-big', 'Asks for too much work');
+    if (iterations < ITERATIONS.min) throw new FormatError('invalid', 'Key settings too weak');
+    const salt = b64(get(k, 'salt'), 16, 64);
+    if (!salt) throw new FormatError('invalid', 'Bad key settings');
+    const w = get(raw, 'wrappedKey');
+    const wrappedKey = isObj(w) ? cleanBox(w, 100) : undefined;
+    return { doocide: FORMAT_VERSION, enc, kdf: { name: 'PBKDF2', hash: 'SHA-256', iterations, salt }, ...box, ...(wrappedKey && { wrappedKey }) };
+  }
+  if (enc === 'sealed') {
+    const to = cleanKey(get(raw, 'to'));
+    const epk = cleanKey(get(raw, 'epk'));
+    const salt = b64(get(raw, 'salt'), 16, 64);
+    if (!to || !epk || !salt) throw new FormatError('invalid', 'Damaged sealed data');
+    return { doocide: FORMAT_VERSION, enc, to, epk, salt, ...box };
+  }
+  throw new FormatError('newer-version');
+}
+
+/** Any Doocide file, encrypted or not. Encrypted ones come back unopened, for the app to ask for a passphrase or find a key. */
+export function readIncoming(raw: unknown): Incoming {
+  if (isObj(raw)) {
+    const enc = get(raw, 'enc');
+    if (enc === 'passphrase' || enc === 'sealed') {
+      const version = get(raw, 'doocide');
+      if (typeof version !== 'number') throw new FormatError('not-doocide');
+      if (version > FORMAT_VERSION) throw new FormatError('newer-version');
+      if (version !== FORMAT_VERSION) throw new FormatError('not-doocide');
+      return { type: 'encrypted', box: validateEncrypted(raw) };
+    }
+  }
+  return { type: 'plain', env: validateAnyEnvelope(raw) };
+}
+
+export const parseIncomingText = (text: string, maxChars?: number): Incoming => readIncoming(parseJsonText(text, maxChars));
 
 /** A decision, template or backup. */
 export function validateEnvelope(raw: unknown): Envelope {
@@ -423,12 +486,14 @@ export function validateInvite(raw: unknown): Invite {
       : undefined;
   const key = cleanKey(get(raw, 'key'));
   const sig = cleanKey(get(raw, 'sig'));
+  const sealKey = cleanKey(get(raw, 'sealKey'));
   return {
     decision,
     settings,
     inviteId,
     ...(organizerName && { organizerName }),
     ...(result && { result }),
+    ...(sealKey && { sealKey }),
     ...(key && { key }),
     ...(sig && { sig }),
   };
@@ -451,6 +516,7 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
     const sentAt = get(v, 'sentAt') === undefined ? undefined : cleanDate(get(v, 'sentAt'), new Date().toISOString());
     const organizerName = settings.anonymity === 'named' ? cleanText(get(v, 'organizerName'), T.author) : '';
     const organizerKey = cleanKey(get(v, 'organizerKey'));
+    const organizerSealKey = cleanKey(get(v, 'organizerSealKey'));
     const key = cleanKey(get(v, 'key'));
     return {
       role,
@@ -467,6 +533,7 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
       ...(organizerName && { organizerName }),
       ...(organizerKey && { organizerKey }),
       ...(organizerKey && get(v, 'organizerConfirmed') === true && { organizerConfirmed: true }),
+      ...(organizerSealKey && { organizerSealKey }),
       ...(key && { key }),
       ...(result && { result }),
     };

@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { addBallots, setBallotIncluded, setIncludeOwn } from '../src/app/edit';
 import { combine, combineVoters, computeResults, disagreements, groupView, reviewBallots, spreadLevel } from '../src/engine';
 import { joinInvite } from '../src/format/create';
+import { generateSealer, sealTo } from '../src/format/crypto';
 import { ballotEnvelope, inviteEnvelope, resultsEnvelope } from '../src/format/share';
 import type { Ballot, Decision } from '../src/format/types';
 import { ballotFrom, groupDecision, participantCopy, unsigned } from './fixtures';
@@ -169,11 +170,17 @@ describe('the whole round trip', () => {
     expect(cell(approved, 'c', 'safety')).toMatchObject({ n: 1, value: 10 });
   });
 
-  it('every group file matches the published schema', () => {
+  it('every group file matches the published schema, sealed ones too', async () => {
     const start = groupDecision({ scoring: 'open', weights: 'everyone' }, { settings: { mode: 'weighted', scaleMax: 10, pughSteps: 1, rows: 'options' } });
     const organizer = addBallots(unsigned(ballotFrom(start, 'v1', 4)))(start);
     const result = groupView(organizer)!.result;
-    const files = [inviteEnvelope(organizer, result), ballotEnvelope(participantCopy(groupDecision({ weights: 'everyone' }))), resultsEnvelope(organizer, result)];
+    const sealer = await generateSealer();
+    const files = [
+      inviteEnvelope(organizer, result, sealer.publicKey),
+      ballotEnvelope(participantCopy(groupDecision({ weights: 'everyone' }))),
+      resultsEnvelope(organizer, result),
+      await sealTo(sealer.publicKey, JSON.stringify(ballotEnvelope(participantCopy(groupDecision())))),
+    ];
     for (const env of files) expect(validateSchema(JSON.parse(JSON.stringify(env))), JSON.stringify(validateSchema.errors)).toBe(true);
   });
 });

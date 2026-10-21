@@ -17,6 +17,13 @@ const sources = files(join(root, 'src')).map((path) => ({ path: relative(root, p
 
 const filesMatching = (re: RegExp) => sources.filter((s) => re.test(s.text)).map((s) => s.path);
 
+/** A file's code without its comments, for rules about what the code does rather than what the comments say. */
+const codeOf = (path: string) =>
+  sources
+    .find((s) => s.path === path)!
+    .text.replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
 describe('source rules', () => {
   it('never renders HTML from strings', () => {
     expect(filesMatching(/dangerouslySetInnerHTML|\.innerHTML\b|\.outerHTML\b|insertAdjacentHTML|document\.write/)).toEqual([]);
@@ -40,8 +47,13 @@ describe('source rules', () => {
     expect(Object.keys(pkg.dependencies)).toEqual(['react', 'react-dom']);
   });
 
-  it('never derives one key from another (decision keys are always generated fresh)', () => {
-    expect(filesMatching(/deriveKey|deriveBits/)).toEqual([]);
+  it('derives keys only for encryption, in one place, and never in the key manager (signing keys are always generated fresh)', () => {
+    expect(filesMatching(/deriveKey|deriveBits/)).toEqual(['src/format/crypto.ts']);
+    expect(codeOf('src/app/keys.ts')).not.toMatch(/derive/i);
+  });
+
+  it('keeps the library passphrase out of storage and preferences', () => {
+    for (const path of ['src/app/store.ts', 'src/app/prefs.ts']) expect(codeOf(path), path).not.toMatch(/passphrase/i);
   });
 
   it('keeps localStorage for preferences only', () => {

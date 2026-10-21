@@ -1,6 +1,9 @@
 // Hard limits for anything that comes from outside: links, files, pasted tables.
 // Generous for real decisions, small enough that a hostile payload can't hang the page.
 
+/** PBKDF2 iterations: what Doocide uses, and the range it accepts from a file. */
+export const ITERATIONS = { default: 600_000, min: 100_000, max: 2_000_000 } as const;
+
 export const LIMITS = {
   /** Encoded payload after "#d=" in a link. */
   linkChars: 400_000,

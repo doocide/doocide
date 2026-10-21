@@ -1852,6 +1852,52 @@ input[type='range'].unset {
   box-shadow: inset 0 0 0 2px var(--win);
 }
 
+/* Passphrases: a locked link or file, the locked library */
+
+.unlock-page {
+  max-width: 440px;
+  margin: 10vh auto 0;
+  padding: 24px 16px;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.unlock-page h1 {
+  margin: 4px 0 0;
+  font-size: 22px;
+}
+
+.unlock-page p {
+  margin: 0;
+}
+
+.unlock-form {
+  width: 100%;
+  display: grid;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.forgot {
+  margin-top: 18px;
+  text-align: start;
+}
+
+.forgot summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.forgot p {
+  margin: 8px 0;
+}
+
+.warn-text {
+  color: var(--warn);
+}
+
 /* Groups: invites, ballots, the group view */
 
 .incoming-text {

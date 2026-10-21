@@ -3,8 +3,8 @@
 
 import { LIMITS } from './limits';
 import { assertShareable } from './share';
-import type { AnyEnvelope } from './types';
-import { FormatError, parseAnyEnvelopeText } from './validate';
+import type { AnyEnvelope, EncryptedEnvelope } from './types';
+import { FormatError, parseAnyEnvelopeText, parseIncomingText, type Incoming } from './validate';
 
 export const LINK_KEY = 'd';
 export const TEMPLATE_KEY = 't';
@@ -32,7 +32,7 @@ export function fromBase64Url(text: string): Uint8Array {
   return out;
 }
 
-async function deflate(bytes: Uint8Array): Promise<Uint8Array> {
+export async function deflate(bytes: Uint8Array): Promise<Uint8Array> {
   const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new CompressionStream('deflate-raw'));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
@@ -119,4 +119,28 @@ export function readFragment(hash: string): FragmentRequest {
   if (key === LINK_KEY) return { type: 'data', payload: value };
   if (key === TEMPLATE_KEY && TEMPLATE_NAME.test(value)) return { type: 'template', name: value };
   return { type: 'unknown' };
+}
+
+/** A link to an encrypted envelope. Its contents were checked before they were encrypted; locked backups never go in links. */
+export async function makeEncryptedLink(box: EncryptedEnvelope, href: string): Promise<string> {
+  if (box.enc === 'passphrase' && box.wrappedKey) throw new Error('Backups never travel in links');
+  return `${appBase(href)}#${LINK_KEY}=${toBase64Url(await deflate(new TextEncoder().encode(JSON.stringify(box))))}`;
+}
+
+/** Like decodePayload, but an encrypted envelope comes back unopened instead of being refused. */
+export async function decodeIncoming(payload: string): Promise<Incoming> {
+  if (payload.length > LIMITS.linkChars) throw new FormatError('too-big');
+  const bytes = await inflateCapped(fromBase64Url(payload), LIMITS.unpackedBytes);
+  let text: string;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw new FormatError('bad-data');
+  }
+  const incoming = parseIncomingText(text);
+  if (incoming.type === 'plain' && incoming.env.kind === 'backup') throw new FormatError('invalid', 'Backups cannot travel in links');
+  if (incoming.type === 'encrypted' && incoming.box.enc === 'passphrase' && incoming.box.wrappedKey) {
+    throw new FormatError('invalid', 'Backups cannot travel in links');
+  }
+  return incoming;
 }
