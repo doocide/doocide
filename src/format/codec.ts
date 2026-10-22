@@ -1,5 +1,9 @@
-// Links: https://<app>/#d=<base64url(deflate-raw(JSON envelope))>
+// Links: https://<app>/#d=<chat-safe base64url(deflate-raw(JSON envelope))>
 // The data sits after "#", which browsers never send to the server.
+//
+// Chat-safe: base64url, with "_" written as "-1" and "-" as "-0", so the data is letters, digits and
+// "-" only. Chat apps read "_like this_" as formatting and can break a link that has underscores.
+// Links from Doocide 0.5.1 and earlier carried plain base64url; they still open (see readFragment).
 
 import { LIMITS } from './limits';
 import { assertShareable } from './share';
@@ -30,6 +34,17 @@ export function fromBase64Url(text: string): Uint8Array {
   const out = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
   return out;
+}
+
+/** Base64url with nothing a chat app could take for formatting: "_" becomes "-1", "-" becomes "-0". Never ends in "-". */
+export const toLinkText = (bytes: Uint8Array): string => toBase64Url(bytes).replace(/-/g, '-0').replace(/_/g, '-1');
+
+const LINK_TEXT = /^(?:[A-Za-z0-9]|-[01])*$/;
+
+/** The base64url that toLinkText wrote. Anything else in the text means the link was damaged. */
+export function fromLinkText(text: string): string {
+  if (!LINK_TEXT.test(text)) throw new FormatError('bad-data');
+  return text.replace(/-([01])/g, (_m, d: string) => (d === '0' ? '-' : '_'));
 }
 
 export async function deflate(bytes: Uint8Array): Promise<Uint8Array> {
@@ -74,6 +89,7 @@ export function appBase(href: string): string {
   return url.href;
 }
 
+/** The base64url payload of a link (before it's made chat-safe). */
 export async function encodePayload(env: AnyEnvelope): Promise<string> {
   assertShareable(env);
   const json = JSON.stringify(env);
@@ -81,7 +97,8 @@ export async function encodePayload(env: AnyEnvelope): Promise<string> {
 }
 
 export async function makeLink(env: AnyEnvelope, href: string): Promise<string> {
-  return `${appBase(href)}#${LINK_KEY}=${await encodePayload(env)}`;
+  assertShareable(env);
+  return `${appBase(href)}#${LINK_KEY}=${toLinkText(await deflate(new TextEncoder().encode(JSON.stringify(env))))}`;
 }
 
 /** Any shared kind: a decision, template, invite or ballot. Never a backup. */
@@ -108,7 +125,11 @@ export type FragmentRequest =
 
 const TEMPLATE_NAME = /^[a-z0-9-]{1,64}$/;
 
-/** Reads "#d=..." or "#t=name". Fragments carry data only, never commands. */
+/**
+ * Reads "#d=..." or "#t=name". Fragments carry data only, never commands. A data payload comes back as
+ * plain base64url. Chat-safe data has no "_" and a 0 or 1 after every "-"; anything else is a link
+ * from Doocide 0.5.1 or earlier, already plain base64url.
+ */
 export function readFragment(hash: string): FragmentRequest {
   const h = hash.startsWith('#') ? hash.slice(1) : hash;
   if (!h) return { type: 'none' };
@@ -116,7 +137,11 @@ export function readFragment(hash: string): FragmentRequest {
   if (eq < 0) return { type: 'unknown' };
   const key = h.slice(0, eq);
   const value = h.slice(eq + 1);
-  if (key === LINK_KEY) return { type: 'data', payload: value };
+  if (key === LINK_KEY) {
+    // Too long to be a real link: the decoder refuses it by length, without reading it first.
+    if (value.length > LIMITS.linkChars || !LINK_TEXT.test(value)) return { type: 'data', payload: value };
+    return { type: 'data', payload: fromLinkText(value) };
+  }
   if (key === TEMPLATE_KEY && TEMPLATE_NAME.test(value)) return { type: 'template', name: value };
   return { type: 'unknown' };
 }
@@ -124,7 +149,7 @@ export function readFragment(hash: string): FragmentRequest {
 /** A link to an encrypted envelope. Its contents were checked before they were encrypted; locked backups never go in links. */
 export async function makeEncryptedLink(box: EncryptedEnvelope, href: string): Promise<string> {
   if (box.enc === 'passphrase' && box.wrappedKey) throw new Error('Backups never travel in links');
-  return `${appBase(href)}#${LINK_KEY}=${toBase64Url(await deflate(new TextEncoder().encode(JSON.stringify(box))))}`;
+  return `${appBase(href)}#${LINK_KEY}=${toLinkText(await deflate(new TextEncoder().encode(JSON.stringify(box))))}`;
 }
 
 /** Like decodePayload, but an encrypted envelope comes back unopened instead of being refused. */

@@ -11,11 +11,16 @@ const readme = readFileSync(join(root, 'README.md'), 'utf8');
 const exampleText = readFileSync(join(root, 'docs/assets/summer-trip.doocide'), 'utf8');
 
 const decode = (payload: string) => JSON.parse(inflateRawSync(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64')).toString());
+/** Links are chat-safe: "-1" stands for "_" and "-0" for "-". */
+const unescape = (text: string) => text.replace(/-([01])/g, (_m, d: string) => (d === '0' ? '-' : '_'));
 
 describe('README', () => {
   it('links to the example exactly as stored in docs/assets/summer-trip.doocide', () => {
-    const payloads = [...readme.matchAll(/doocide\.github\.io\/#d=([A-Za-z0-9_-]+)/g)].map((m) => m[1]!);
-    expect(payloads.length).toBeGreaterThan(0);
+    const links = [...readme.matchAll(/doocide\.github\.io\/#d=([A-Za-z0-9_-]+)/g)].map((m) => m[1]!);
+    expect(links.length).toBeGreaterThan(0);
+    // The README shows links the way the app makes them today: no underscores.
+    for (const link of links) expect(link, 'run: node tools/demo-link.mjs --update-readme').toMatch(/^(?:[A-Za-z0-9]|-[01])+$/);
+    const payloads = links.map(unescape);
     for (const p of payloads) expect(decode(p), 'run: node tools/demo-link.mjs --update-readme').toEqual(JSON.parse(exampleText));
   });
 

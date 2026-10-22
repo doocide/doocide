@@ -29,7 +29,9 @@ import { FakeFolder, NAME_MARKER, PRIVATE_MARKER, SHARED_MARKER, ballotFrom, gro
 const fromBase64Url = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4)), (c) => c.charCodeAt(0));
 
 async function linkJson(link: string): Promise<string> {
-  const payload = link.slice(link.indexOf('#d=') + 3);
+  const req = readFragment(new URL(link).hash);
+  if (req.type !== 'data') throw new Error('not a data link');
+  const payload = req.payload;
   return new TextDecoder().decode(await inflateCapped(fromBase64Url(payload), 10_000_000));
 }
 

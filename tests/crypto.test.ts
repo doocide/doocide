@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { addBallots, confirmKey, setBallotIncluded } from '../src/app/edit';
 import { reviewBallots } from '../src/engine';
-import { decodeIncoming, decodePayload, encodePayload, makeEncryptedLink } from '../src/format/codec';
+import { decodeIncoming, decodePayload, encodePayload, makeEncryptedLink, readFragment } from '../src/format/codec';
 import {
   PBKDF2_ITERATIONS,
   WrongKey,
@@ -184,7 +184,9 @@ describe('passphrase locks', () => {
     'open with the right passphrase after travelling through a link',
     async () => {
       const locked = await lockWithPassphrase(JSON.stringify(env()), 'four random words here');
-      const incoming = await decodeIncoming((await makeEncryptedLink(locked, 'https://doocide.github.io/')).split('#d=')[1]!);
+      const req = readFragment(new URL(await makeEncryptedLink(locked, 'https://doocide.github.io/')).hash);
+      if (req.type !== 'data') throw new Error('not a data link');
+      const incoming = await decodeIncoming(req.payload);
       if (incoming.type !== 'encrypted' || incoming.box.enc !== 'passphrase') throw new Error('expected a locked envelope');
       const inner = parseAnyEnvelopeText(await openWithPassphrase(incoming.box, '  four random words here '));
       expect(inner.kind).toBe('decision');

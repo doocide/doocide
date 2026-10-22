@@ -22,6 +22,8 @@ Milestone 2d released as v0.5.0 (2026-10-21), which finishes milestone 2: a shar
 
 v0.5.1 (2026-10-21): hovering a score cell lights up its option's name strip in both layouts (the winner turns blue with a gold border, the Pugh baseline gets a blue ring); only the option heads re-render on hover (a small external store in `Grid.tsx`). The "People expected" help says the organizer's own scores don't count.
 
+v0.5.2 (2026-10-21): chat-safe links. Link data is still base64url(deflate-raw(JSON)) after `#d=`, but written with "_" as "-1" and "-" as "-0" (`toLinkText`/`fromLinkText` in `codec.ts`), so it holds only letters, digits and "-" and chat apps don't take it for formatting. Older `#d=` links (plain base64url, with "_") still open: `readFragment` tells them apart by their characters. The README's example link is regenerated with `node tools/demo-link.mjs --update-readme`.
+
 Next: milestone 3 (AI copy-prompt and MCP, public sharing, room mode with QR codes, decision journal, ~35 languages). Plan it first.
 
 ## Stack and commands

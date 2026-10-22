@@ -1,6 +1,6 @@
 {
   "name": "doocide",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": true,
   "description": "Make better decisions with Doocide. Local-first: no server, no accounts, no tracking.",
   "license": "AGPL-3.0-or-later",

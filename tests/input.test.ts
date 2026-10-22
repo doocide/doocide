@@ -1,11 +1,11 @@
 // Incoming links and files are hostile until proven otherwise.
 
 import { describe, expect, it } from 'vitest';
-import { decodePayload } from '../src/format/codec';
+import { decodePayload, encodePayload, fromBase64Url, fromLinkText, makeLink, readFragment, toLinkText } from '../src/format/codec';
 import { LIMITS } from '../src/format/limits';
 import { checkLink, cleanText, escapeSpreadsheetText } from '../src/format/sanitize';
 import { parseTable, toCSV } from '../src/format/table';
-import { inviteEnvelope } from '../src/format/share';
+import { inviteEnvelope, shareEnvelope } from '../src/format/share';
 import {
   FormatError,
   jsonDepth,
@@ -368,5 +368,38 @@ describe('encrypted files from others', () => {
 
   it('are still refused where only plain files make sense', () => {
     expect(() => validateEnvelope(box)).toThrow(expect.objectContaining({ code: 'encrypted' }));
+  });
+});
+
+describe('links chat apps leave alone', () => {
+  it('carry only letters, digits and "-", never end in "-", and round-trip every byte', () => {
+    for (let n = 0; n < 300; n++) {
+      const bytes = crypto.getRandomValues(new Uint8Array(n));
+      const text = toLinkText(bytes);
+      expect(text).toMatch(/^[A-Za-z0-9-]*$/);
+      expect(text.endsWith('-')).toBe(false);
+      expect(fromBase64Url(fromLinkText(text))).toEqual(bytes);
+    }
+  });
+
+  it('read new links, and links from Doocide 0.5.1 and earlier, to the same data', async () => {
+    const env = shareEnvelope(sampleDecision(), 'decision');
+    const link = await makeLink(env, 'https://doocide.github.io/');
+    expect(new URL(link).hash).toMatch(/^#d=[A-Za-z0-9-]+$/);
+    const fresh = readFragment(new URL(link).hash);
+    if (fresh.type !== 'data') throw new Error('not a data link');
+    // The old form: plain base64url, which almost always has an underscore somewhere.
+    const plain = await encodePayload(env);
+    expect(plain).toContain('_');
+    expect(readFragment(`#d=${plain}`)).toEqual(fresh);
+    expect(await decodePayload(fresh.payload)).toEqual(validateEnvelope(JSON.parse(JSON.stringify(env))));
+  });
+
+  it('refuse damaged links as damaged', async () => {
+    for (const bad of ['#d=ab-2cd', '#d=abc-', '#d=ab cd', '#d=-1-1-1-1']) {
+      const req = readFragment(bad);
+      if (req.type !== 'data') continue;
+      await expect(decodePayload(req.payload), bad).rejects.toBeInstanceOf(FormatError);
+    }
   });
 });
