@@ -384,7 +384,7 @@
   "group.medianHelp": "Each score is the middle value of everyone who scored it, so one extreme ballot can't drag it.",
   "group.expected": "People expected",
   "group.expectedPlaceholder": "Optional",
-  "group.expectedHelp": "Doocide warns you when more ballots arrive than this.",
+  "group.expectedHelp": "How many people you invite. Your own scores don't count here. Doocide warns you when more ballots arrive than this.",
   "group.folderResults": "Results in the shared folder",
   "group.folderNever": "Never",
   "group.folderPublish": "When I publish",

@@ -20,6 +20,8 @@ v0.4.2 (2026-10-21): invites kept in step. Each participant copy follows an invi
 
 Milestone 2d released as v0.5.0 (2026-10-21), which finishes milestone 2: a shared cloud folder for a group (`folder.ts`, the only file touching folder handles; read or written only on a tap, never watched). Organizers connect a folder, put the signed invite in it, collect sealed ballots with "Check for new ballots", and publish results there: never, when they publish, or after each approval (open scoring only; `settings.folderResults`). Results files are signed by the organizer's device key (`signEnvelope`) and can be locked with a passphrase whose derived key is kept, non-extractable, by the organizer and by each participant after one entry. Participants save sealed ballots to the folder and "Check for updates" (newer results, or a newer invite). Browsers without folder access download files and pick them back. Also: an instant description tooltip on option cells, new options and factors take focus, and Safari's file pickers fixed (inputs stay in the page while open).
 
+v0.5.1 (2026-10-21): hovering a score cell lights up its option's name strip in both layouts (the winner turns blue with a gold border, the Pugh baseline gets a blue ring); only the option heads re-render on hover (a small external store in `Grid.tsx`). The "People expected" help says the organizer's own scores don't count.
+
 Next: milestone 3 (AI copy-prompt and MCP, public sharing, room mode with QR codes, decision journal, ~35 languages). Plan it first.
 
 ## Stack and commands

@@ -906,8 +906,29 @@ a:focus-visible {
   min-height: 42px;
 }
 
-.opt-strip:hover {
+.opt-strip:hover,
+.col-option.hover .opt-strip,
+.row-option.hover .opt-strip {
   background: var(--strip-hover);
+}
+
+/* Over one of the winner's cells: the same blue as any other option, with its gold as a border. */
+.col-option.win.hover .opt-strip,
+.row-option.win.hover .opt-strip {
+  background: var(--strip-hover);
+  color: var(--head-ink);
+  box-shadow: inset 0 0 0 3px var(--win);
+}
+
+.col-option.win.hover .opt-name::placeholder,
+.row-option.win.hover .opt-name::placeholder {
+  color: rgb(255 255 255 / 0.75);
+}
+
+/* Over one of the Pugh baseline's cells: it keeps its color and gets a ring instead. */
+.col-option.baseline.hover .opt-strip,
+.row-option.baseline.hover .opt-strip {
+  box-shadow: inset 0 0 0 3px var(--strip-hover);
 }
 
 .opt-strip .icon-button {

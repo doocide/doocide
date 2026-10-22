@@ -384,7 +384,7 @@
   "group.medianHelp": "Fiecare notă e valoarea din mijloc a celor care au notat, așa că un singur vot extrem nu o poate trage după el.",
   "group.expected": "Câți oameni aștepți",
   "group.expectedPlaceholder": "Opțional",
-  "group.expectedHelp": "Doocide te avertizează dacă sosesc mai multe voturi decât atât.",
+  "group.expectedHelp": "Câte persoane inviți. Notele tale nu se numără aici. Doocide te avertizează dacă sosesc mai multe voturi decât atât.",
   "group.folderResults": "Rezultatele în folderul partajat",
   "group.folderNever": "Niciodată",
   "group.folderPublish": "Când le public",

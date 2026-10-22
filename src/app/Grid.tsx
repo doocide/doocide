@@ -3,7 +3,7 @@
 // Options as rows: each option row starts with its rank, name and summaries; factors are columns,
 // headed by their name and importance. Headers stay pinned while scrolling either way.
 
-import { useMemo, type CSSProperties, type ReactNode } from 'react';
+import { useMemo, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { cellKey, cellValues, spreadLevel, type Results } from '../engine';
 import type { CellResult, Decision, Fact, Factor, Option, WeightResult } from '../format/types';
 import { formatNumber, t } from '../i18n';
@@ -103,6 +103,36 @@ export function scoreLabel(d: Decision, results: Results, optionId: string): str
 }
 
 /** Everything both layouts need, worked out once. */
+/**
+ * Which option's cells the pointer is over. Only the option heads listen, so moving across the grid
+ * re-renders one or two heads, never every cell.
+ */
+interface HoverStore {
+  set: (optionId: string | null) => void;
+  is: (optionId: string) => boolean;
+  subscribe: (listener: () => void) => () => void;
+}
+
+function hoverStore(): HoverStore {
+  let current: string | null = null;
+  const listeners = new Set<() => void>();
+  return {
+    set: (optionId) => {
+      if (optionId === current) return;
+      current = optionId;
+      for (const l of listeners) l();
+    },
+    is: (optionId) => current === optionId,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+}
+
+/** True while the pointer is over one of this option's score cells. */
+const useOptionHovered = (c: Ctx, optionId: string) => useSyncExternalStore(c.hover.subscribe, () => c.hover.is(optionId));
+
 interface Ctx extends MatrixProps {
   /** Names, options and factors can't change (read-only, or a participant's copy). */
   fixed: boolean;
@@ -113,6 +143,7 @@ interface Ctx extends MatrixProps {
   notes: Map<string, number>;
   /** An option or factor just added: its name field takes focus. */
   focusId: string | null;
+  hover: HoverStore;
   addOption: () => void;
   addFactor: () => void;
 }
@@ -212,6 +243,8 @@ function Cell({ c, o, f }: { c: Ctx; o: Option; f: Factor }) {
   const groupCell = group?.cells.get(key);
   return (
     <td
+      onMouseEnter={() => c.hover.set(o.id)}
+      onMouseLeave={() => c.hover.set(null)}
       className={[
         'cell',
         value !== undefined ? 'scored' : '',
@@ -258,8 +291,9 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
 function OptionHead({ c, o }: { c: Ctx; o: Option }) {
   const s = optionSummary(c, o);
   const hover = useHoverTip(o.description, c.d.lang);
+  const lit = useOptionHovered(c, o.id);
   return (
-    <th scope="col" className={['col-option', s.win ? 'win' : '', s.baseline ? 'baseline' : ''].join(' ')} style={s.style} {...hover.props}>
+    <th scope="col" className={['col-option', s.win ? 'win' : '', s.baseline ? 'baseline' : '', lit ? 'hover' : ''].join(' ')} style={s.style} {...hover.props}>
       <div className="opt-head">
         <div className="opt-big" title={s.win ? t('results.winner') : undefined}>
           {s.rank}
@@ -279,8 +313,9 @@ function OptionHead({ c, o }: { c: Ctx; o: Option }) {
 function OptionRowHead({ c, o }: { c: Ctx; o: Option }) {
   const s = optionSummary(c, o);
   const hover = useHoverTip(o.description, c.d.lang);
+  const lit = useOptionHovered(c, o.id);
   return (
-    <th scope="row" className={['row-option', s.win ? 'win' : '', s.baseline ? 'baseline' : ''].join(' ')} style={s.style} {...hover.props}>
+    <th scope="row" className={['row-option', s.win ? 'win' : '', s.baseline ? 'baseline' : '', lit ? 'hover' : ''].join(' ')} style={s.style} {...hover.props}>
       <div className="opt-line">
         <div className="opt-rank" title={s.win ? t('results.winner') : undefined}>
           {s.rank}
@@ -406,6 +441,7 @@ export function Grid(props: MatrixProps) {
   const facts = useMemo(() => new Map(d.facts.map((f) => [cellKey(f.optionId, f.factorId), f])), [d.facts]);
   const notes = useMemo(() => noteCounts(d), [d]);
   const { focusId, nextId } = useFocusNew();
+  const hover = useMemo(hoverStore, []);
   const c: Ctx = {
     ...props,
     fixed: readOnly || Boolean(lock?.structure),
@@ -415,6 +451,7 @@ export function Grid(props: MatrixProps) {
     facts,
     notes,
     focusId,
+    hover,
     addOption: () => props.onEdit(addOption('', nextId())),
     addFactor: () => props.onEdit(addFactor('', nextId())),
   };
