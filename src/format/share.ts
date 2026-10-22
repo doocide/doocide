@@ -104,8 +104,11 @@ export function ballotEnvelope(d: Decision): BallotEnvelope {
   const name = g.settings.anonymity === 'named' ? (g.myName ?? '').trim() : '';
   const when = (iso: string) => (name ? iso : dayOnly(iso));
   const pugh = d.settings.mode === 'pugh';
+  // Options this person abstains from: no scores or notes for them go out, only the fact of abstaining.
+  const skip = abstainedOptions(d);
+  const abstain = d.options.filter((o) => skip.has(o.id)).map((o) => o.id);
   const notes: Note[] = d.notes
-    .filter((n) => n.visibility === 'shared')
+    .filter((n) => n.visibility === 'shared' && (!n.optionId || !skip.has(n.optionId)))
     .map((n) => ({
       id: n.id,
       ...(n.optionId && { optionId: n.optionId }),
@@ -121,12 +124,20 @@ export function ballotEnvelope(d: Decision): BallotEnvelope {
     revision: Math.max(1, g.revision ?? 1),
     createdAt: when(new Date().toISOString()),
     ...(name && { author: name }),
-    scores: pugh ? [] : d.scores.map((s) => ({ ...s })),
-    pugh: pugh ? d.pugh.map((s) => ({ ...s })) : [],
+    scores: pugh ? [] : d.scores.filter((s) => !skip.has(s.optionId)).map((s) => ({ ...s })),
+    pugh: pugh ? d.pugh.filter((s) => !skip.has(s.optionId)).map((s) => ({ ...s })) : [],
     ...(g.settings.weights === 'everyone' && { weights: d.factors.map((f) => ({ factorId: f.id, weight: f.weight })) }),
     notes,
+    ...(abstain.length > 0 && { abstain }),
   };
   return { doocide: FORMAT_VERSION, kind: 'ballot', enc: 'none', data };
+}
+
+/** The options this person abstains from: ones the decision still has, never the Pugh baseline. */
+export function abstainedOptions(d: Decision): Set<string> {
+  const baseline = d.settings.mode === 'pugh' ? d.settings.baselineId : undefined;
+  const ids = new Set(d.group?.abstain ?? []);
+  return new Set(d.options.filter((o) => ids.has(o.id) && o.id !== baseline).map((o) => o.id));
 }
 
 const isDay = (iso: string) => iso.endsWith('T00:00:00.000Z');
@@ -236,6 +247,8 @@ export interface BallotSummary {
   sharedNotes: number;
   /** null: the ballot carries no name. */
   name: string | null;
+  /** Option ids this ballot abstains from. */
+  abstained: string[];
   /** Left out: private notes. */
   privateNotes: number;
 }
@@ -247,6 +260,7 @@ export function ballotSummary(d: Decision): BallotSummary {
     weights: data.weights?.length ?? 0,
     sharedNotes: data.notes.length,
     name: data.author ?? null,
+    abstained: data.abstain ?? [],
     privateNotes: privateCount(d),
   };
 }

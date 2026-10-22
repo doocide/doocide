@@ -21,8 +21,10 @@ export type BallotFlag =
   | { kind: 'sameName' }
   /** More ballots than the organizer expected. */
   | { kind: 'overCount'; count: number; expected: number }
-  /** Options or factors this ballot has no scores for at all: skipped, or added after it was made. */
+  /** Options or factors this ballot has no scores for at all: skipped, or added after it was made. Abstentions aren't counted here. */
   | { kind: 'missing'; options: number; factors: number }
+  /** The sender abstained from these options (a conflict of interest, say). Left out of the result, not counted as zero. */
+  | { kind: 'abstained'; options: string[] }
   /** The ballot carried a name, but the group is anonymous, so the name was removed. */
   | { kind: 'nameRemoved' }
   /** No scores at all. */
@@ -96,11 +98,13 @@ export function reviewBallots(d: Decision, incoming: ReceivedBallot[]): Review[]
       if (others(ballot.voterId).some((b) => scoreKey(b, pugh) === key)) flags.push({ kind: 'copy' });
       const scoredOptions = new Set(cells.map((s) => s.optionId));
       const scoredFactors = new Set(cells.map((s) => s.factorId));
-      const options = d.options.filter((o) => o.id !== baselineId && !scoredOptions.has(o.id)).length;
+      const abstained = new Set(ballot.abstain ?? []);
+      const options = d.options.filter((o) => o.id !== baselineId && !abstained.has(o.id) && !scoredOptions.has(o.id)).length;
       const factors = d.factors.filter((f) => !scoredFactors.has(f.id)).length;
       if (options || factors) flags.push({ kind: 'missing', options, factors });
     }
 
+    if (ballot.abstain?.length) flags.push({ kind: 'abstained', options: ballot.abstain });
     const name = nameKey(ballot);
     if (name && others(ballot.voterId).some((b) => nameKey(b) === name)) flags.push({ kind: 'sameName' });
     const adds = allowed === 'ok' && !stale;

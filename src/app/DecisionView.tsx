@@ -7,8 +7,10 @@ import { BallotsPanel, ballotLabel } from './BallotsPanel';
 import { Cards, Setup } from './Cards';
 import { CompareCodes, useShortCode } from './codes';
 import { DetailDialog } from './DetailDialog';
-import { ballotSealed, confirmOrganizer, scoringLocked, setRows, setTitle, structureLocked, tidyNames, weightsLocked, type Edit, type Target } from './edit';
+import { abstainedOptions } from '../format/share';
+import { ballotSealed, confirmOrganizer, scoringLocked, setRows, setTitle, structureLocked, tidyNames, weightsLocked, withoutAbstained, type Edit, type Target } from './edit';
 import { downloadText, safeFileName } from './files';
+import { optionName } from './labels';
 import { canUseFolders, resultsFileName } from './folder';
 import { useFolder } from './SharedFolder';
 import { Grid, type GroupCells, type VoterValue } from './Grid';
@@ -241,8 +243,13 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
   const base = showGroup ? gv.merged : d;
   const shown = useMemo(() => ((base.settings.rows ?? 'factors') === rows ? base : { ...base, settings: { ...base.settings, rows } }), [base, rows]);
   const changeRows = (next: 'factors' | 'options') => (readOnly ? setRowsOverride(next) : onEdit(setRows(next)));
-  const results = useMemo(() => computeResults(shown), [shown]);
-  const analysis = useMemo(() => analyze(shown, results), [shown, results]);
+  // Your own ranking leaves out options you abstain from, so nothing reads as missing. The group's view has none.
+  // Only the numbers come from that copy: names and everything else read the full decision.
+  const skip = useMemo(() => (showGroup ? new Set<string>() : abstainedOptions(d)), [showGroup, d]);
+  const ranked = useMemo(() => withoutAbstained(shown, skip), [shown, skip]);
+  const results = useMemo(() => computeResults(ranked), [ranked]);
+  const analysis = useMemo(() => analyze(ranked, results), [ranked, results]);
+  const abstainedNames = d.options.filter((o) => skip.has(o.id)).map((o) => optionName(d, o, uiLang));
   const [tab, setTab] = useState<'score' | 'results' | 'setup'>(d.options.length && d.factors.length ? 'score' : 'setup');
   const [detail, setDetail] = useState<Target | null>(null);
   const [dialog, setDialog] = useState<null | 'share' | 'invite' | 'settings'>(null);
@@ -258,7 +265,8 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
       // Who gave what, for the organizer's eyes only: names in named groups, numbers otherwise.
       voters = new Map();
       const g = d.group;
-      const own = g.includeOwn ? [{ label: t('ballots.you'), cells: pugh ? d.pugh : d.scores }] : [];
+      const ownSkip = new Set(g.abstain ?? []);
+      const own = g.includeOwn ? [{ label: t('ballots.you'), cells: (pugh ? d.pugh : d.scores).filter((s) => !ownSkip.has(s.optionId)) }] : [];
       const others = g.ballots.flatMap((b, i) => (b.included ? [{ label: ballotLabel(d, b, i), cells: pugh ? b.pugh : b.scores }] : []));
       for (const { label, cells: list } of [...own, ...others]) {
         for (const s of list) {
@@ -279,7 +287,9 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
   const matrixProps = { d: shown, results, readOnly: readOnly || showGroup, uiLang, onEdit, onDetail: setDetail, lock, ...(group && { group }) };
   const modeLine = pugh ? t('mode.pugh', { steps: d.settings.pughSteps === 2 ? '−− − S + ++' : '− S +' }) : t('mode.weighted', { max: d.settings.scaleMax });
 
-  const resultsPanel = <ResultsPanel d={shown} results={results} analysis={analysis} uiLang={uiLang} {...(showGroup && { group: gv.result })} />;
+  const resultsPanel = (
+    <ResultsPanel d={shown} results={results} analysis={analysis} uiLang={uiLang} abstained={abstainedNames} {...(showGroup && { group: gv.result })} />
+  );
   const ballotsPanel =
     role === 'organizer' && !readOnly ? (
       <BallotsPanel

@@ -10,8 +10,15 @@ import { formatValue } from './controls';
 import { decisionTitle, factorName, optionName } from './labels';
 import { Icon } from './ui';
 
-function flagText(f: BallotFlag): string {
+function flagText(f: BallotFlag, d: Decision, uiLang: string): string {
   switch (f.kind) {
+    case 'abstained':
+      return t('review.flagAbstained', {
+        names: d.options
+          .filter((o) => f.options.includes(o.id))
+          .map((o) => optionName(d, o, uiLang))
+          .join(', '),
+      });
     case 'replaces':
       return t('review.flagReplaces');
     case 'outdated':
@@ -40,10 +47,11 @@ function flagText(f: BallotFlag): string {
 }
 
 /** Flags that only inform, as opposed to ones worth a second look. */
-const INFO = new Set<BallotFlag['kind']>(['replaces', 'otherRound', 'nameRemoved', 'missing', 'unsigned']);
+const INFO = new Set<BallotFlag['kind']>(['replaces', 'otherRound', 'nameRemoved', 'missing', 'unsigned', 'abstained']);
 
-export function BallotTable({ d, ballot, uiLang }: { d: Decision; ballot: Pick<Ballot, 'scores' | 'pugh' | 'weights'>; uiLang: string }) {
+export function BallotTable({ d, ballot, uiLang }: { d: Decision; ballot: Pick<Ballot, 'scores' | 'pugh' | 'weights' | 'abstain'>; uiLang: string }) {
   const pugh = d.settings.mode === 'pugh';
+  const abstained = new Set(ballot.abstain ?? []);
   const values = new Map((pugh ? ballot.pugh : ballot.scores).map((s) => [`${s.optionId} ${s.factorId}`, s.value]));
   const weights = new Map(ballot.weights?.map((w) => [w.factorId, w.weight]));
   const options = d.options.filter((o) => !(pugh && o.id === d.settings.baselineId));
@@ -69,7 +77,9 @@ export function BallotTable({ d, ballot, uiLang }: { d: Decision; ballot: Pick<B
               </th>
               {weights.size > 0 && <td>{weights.has(f.id) ? '★'.repeat(weights.get(f.id)!) : '–'}</td>}
               {options.map((o) => (
-                <td key={o.id}>{formatValue(d, values.get(`${o.id} ${f.id}`))}</td>
+                <td key={o.id} className={abstained.has(o.id) ? 'abstained' : undefined}>
+                  {abstained.has(o.id) ? t('abstain.cell') : formatValue(d, values.get(`${o.id} ${f.id}`))}
+                </td>
               ))}
             </tr>
           ))}
@@ -148,7 +158,7 @@ export function BallotReview({ d, ballots, skipped, onApprove, onDiscard }: Prop
                   {r.flags.map((f) => (
                     <li key={f.kind} className={INFO.has(f.kind) ? 'info' : 'warn'}>
                       <Icon name={INFO.has(f.kind) ? 'check' : 'warn'} size={14} />
-                      {flagText(f)}
+                      {flagText(f, d, uiLang)}
                     </li>
                   ))}
                 </ul>

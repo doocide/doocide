@@ -107,9 +107,11 @@ const hasScores = (v: Voter, d: Decision) => (d.settings.mode === 'pugh' ? v.pug
 export function groupVoters(d: Decision): Voter[] {
   const g = d.group;
   if (!g || g.role !== 'organizer') return [];
+  // The organizer abstains like anyone else: those options take nothing from their own scores.
+  const skip = new Set(g.abstain ?? []);
   const own: Voter = {
-    scores: d.scores,
-    pugh: d.pugh,
+    scores: d.scores.filter((s) => !skip.has(s.optionId)),
+    pugh: d.pugh.filter((s) => !skip.has(s.optionId)),
     ...(g.settings.weights === 'everyone' && { weights: d.factors.map((f) => ({ factorId: f.id, weight: f.weight })) }),
   };
   return [...(g.includeOwn && hasScores(own, d) ? [own] : []), ...g.ballots.filter((b) => b.included)];

@@ -287,6 +287,31 @@ export const setResultsLock = (kdf: Kdf | null): Edit => (d) => {
   return { ...d, group: kdf ? { ...rest, resultsKdf: kdf } : rest };
 };
 
+/**
+ * Abstain from an option (a conflict of interest, say), or take part again. Scores already typed stay
+ * on this device, so taking part again brings them back; while abstaining they never go out or count.
+ * Not for the Pugh baseline, which nobody scores.
+ */
+export const setAbstain = (optionId: string, on: boolean): Edit => (d) => {
+  const g = d.group;
+  if (!g || !d.options.some((o) => o.id === optionId)) return d;
+  if (on && d.settings.mode === 'pugh' && d.settings.baselineId === optionId) return d;
+  const ids = new Set(g.abstain ?? []);
+  if (ids.has(optionId) === on) return d;
+  if (on) ids.add(optionId);
+  else ids.delete(optionId);
+  const abstain = d.options.filter((o) => ids.has(o.id)).map((o) => o.id);
+  const { abstain: _old, ...rest } = g;
+  return touch({ ...d, group: abstain.length ? { ...rest, abstain } : rest });
+};
+
+/** The decision without the options this person abstains from: for their own ranking, so nothing reads as missing. */
+export function withoutAbstained(d: Decision, skip: Set<string>): Decision {
+  if (skip.size === 0) return d;
+  const keep = <T extends { optionId?: string }>(x: T) => !x.optionId || !skip.has(x.optionId);
+  return { ...d, options: d.options.filter((o) => !skip.has(o.id)), scores: d.scores.filter(keep), pugh: d.pugh.filter(keep), facts: d.facts.filter(keep) };
+}
+
 /** Organizer: results just went to the shared folder. */
 export const markPublished: Edit = (d) =>
   d.group?.role === 'organizer' ? { ...d, group: { ...d.group, publishedAt: new Date().toISOString() } } : d;
@@ -420,7 +445,9 @@ export const refreshFromInvite = (invite: Invite, signed: boolean): Edit => (d) 
   const ownWeight = new Map(d.factors.map((f) => [f.id, f.weight]));
   const everyone = invite.settings.weights === 'everyone';
   const { description: _description, group: _group, ...rest } = d;
-  const { result: oldResult, resultsAt: oldAt, ...kept } = g;
+  const { result: oldResult, resultsAt: oldAt, abstain: oldAbstain, ...kept } = g;
+  // Abstentions only for options the invite still has, and never for its baseline.
+  const abstain = (oldAbstain ?? []).filter((id) => optionIds.has(id) && !(inv.settings.mode === 'pugh' && id === inv.settings.baselineId));
   // Results go with whichever is newer: the ones in this invite, or the ones the copy already shows.
   const inviteResult = invite.result && (!oldAt || inv.updatedAt >= oldAt);
   const result = inviteResult ? invite.result : oldResult && fitResult(oldResult, inv);
@@ -445,6 +472,7 @@ export const refreshFromInvite = (invite: Invite, signed: boolean): Edit => (d) 
       settings: { ...invite.settings, anonymity: g.settings.anonymity },
       ...(result && { result }),
       ...(result && resultsAt && { resultsAt }),
+      ...(abstain.length > 0 && { abstain }),
       ...(!g.organizerKey && signed && invite.key && { organizerKey: invite.key }),
       ...(signed && invite.sealKey && { organizerSealKey: invite.sealKey }),
     },

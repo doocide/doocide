@@ -205,7 +205,7 @@ describe('groups: private notes and group data never leave the device', () => {
     expect(inviteSummary(d, result)).toMatchObject({ options: 3, factors: 3, facts: 1, resultBallots: 3, ownScores: 9, notes: 2, ballots: 2 });
     expect(resultsSummary(d, result)).toMatchObject({ ballots: 3, cells: 9, sharedNotes: 1, privateNotes: 1 });
     const p = participantCopy(groupDecision());
-    expect(ballotSummary(p)).toEqual({ scores: 9, weights: 0, sharedNotes: 1, name: null, privateNotes: 1 });
+    expect(ballotSummary(p)).toEqual({ scores: 9, weights: 0, sharedNotes: 1, name: null, abstained: [], privateNotes: 1 });
   });
 
   it('invite and ballot links keep their data after "#"', async () => {

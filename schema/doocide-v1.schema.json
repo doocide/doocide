@@ -321,6 +321,13 @@
             "additionalProperties": false
           }
         },
+        "abstain": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/id" },
+          "description": "Options the sender abstained from (a conflict of interest, say). The ballot has no scores for them; they're left out of the result, not counted as zero. Left out when empty."
+        },
         "notes": {
           "type": "array",
           "maxItems": 5000,

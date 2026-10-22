@@ -26,6 +26,8 @@ v0.5.2 (2026-10-21): chat-safe links. Link data is still base64url(deflate-raw(J
 
 v0.5.3 (2026-10-21): link previews. The page carries Open Graph tags and a preview image (`public/og.png`, drawn by `tools/make-og.mjs`), the same for every link, since preview services never see past `#`. Copy puts the decision's title on the line above an unlocked link, so the chat shows it; locked and sealed links stay link-only, and the share sheet gets the title only for unlocked links.
 
+v0.5.4 (2026-10-22): abstaining from an option (a conflict of interest, say). The person ticks it in the option's details; their copy keeps `group.abstain` (scores stay on the device, so unticking brings them back), and the ballot carries `abstain` (option ids, signed) instead of scores or notes for those options. Abstentions are left out of the group result, never counted as zero; the organizer's own abstentions too. Anonymous groups warn that the organizer sees which ballot abstained. The organizer's review shows "Abstains from: X" and an "Abstained" column; the person's own ranking leaves the option out. An organizer on an older offline file would refuse a ballot that abstains (the unknown field breaks its signature check); ballots without abstentions are unchanged.
+
 Next: milestone 3 (AI copy-prompt and MCP, public sharing, room mode with QR codes, decision journal, ~35 languages). Plan it first.
 
 ## Stack and commands
@@ -47,7 +49,7 @@ React 19 + TypeScript 7 + Vite 8, built into one HTML file (vite-plugin-singlefi
 - `tools/`: build plugins (security policy hashes, static packs). `make-og.mjs` draws the link preview image `public/og.png` (the same for every link: previews never see past `#`).
 - `schema/` (MIT): JSON Schema. `templates/` (CC0): starter templates.
 - `docs/assets/`: README logo and screenshots. The example decision `summer-trip.doocide` drives the README's example link and every screenshot; when the UI changes visibly, refresh them with `sandbox/maintainer/screenshots.md` (local, gitignored) and `node tools/demo-link.mjs --update-readme`.
-- `tests/`: `privacy.test.ts` and `input.test.ts` enforce the never-lists below; `group.test.ts` checks merging and the ballot checks; `crypto.test.ts` checks signatures, short codes and encryption; `invites.test.ts` checks invite versions and changes; `folder.test.ts` checks what goes in a shared folder, signed and locked results, and the folder setting; `build.test.ts` checks the built pages.
+- `tests/`: `privacy.test.ts` and `input.test.ts` enforce the never-lists below; `group.test.ts` checks merging and the ballot checks; `crypto.test.ts` checks signatures, short codes and encryption; `invites.test.ts` checks invite versions and changes; `folder.test.ts` checks what goes in a shared folder, signed and locked results, and the folder setting; `abstain.test.ts` checks abstaining (ballots, signatures, the result, review flags); `build.test.ts` checks the built pages.
 
 The app is AGPL-3.0-or-later. The file format, schema, templates and scoring engine are MIT or CC0, so other tools can adopt them.
 

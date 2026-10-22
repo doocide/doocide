@@ -92,6 +92,7 @@ export function BallotsPanel({ d, voters, result, onEdit, onInvite, onOpenBallot
               <span className="muted small">
                 {formatDate(b.receivedAt)}
                 {b.revision > 1 && ` · ${t('ballots.updated')}`}
+                {(b.abstain?.length ?? 0) > 0 && ` · ${t('ballots.abstained', { count: b.abstain!.length })}`}
               </span>
               <button
                 className="icon-button small"

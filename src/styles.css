@@ -1084,6 +1084,37 @@ a:focus-visible {
   background: var(--hover);
 }
 
+/* An option this person abstains from: nothing to score, said plainly. */
+.cell.abstained,
+.cell.abstained:hover {
+  background: repeating-linear-gradient(135deg, var(--surface-2) 0 6px, var(--surface) 6px 12px);
+  text-align: center;
+  vertical-align: middle;
+}
+
+.abstained-label {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.abstain-badge {
+  align-self: center;
+  margin: 4px auto 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.mini-table td.abstained {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .score-input {
   width: 72px;
   font-size: 20px;

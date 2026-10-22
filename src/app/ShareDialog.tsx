@@ -18,7 +18,7 @@ import {
   type ShareKind,
 } from '../format/share';
 import type { AnyEnvelope, BallotEnvelope, Decision, EncryptedEnvelope, GroupResult } from '../format/types';
-import { t } from '../i18n';
+import { t, useLang } from '../i18n';
 import { useDeviceKey, useShortCode } from './codes';
 import { ballotSealed, checkOrganizerFirst, confirmOrganizer, markInvited, markSent, restartVoter, setMyName, type Edit } from './edit';
 import { inviteShape } from './invites';
@@ -26,7 +26,7 @@ import { FILE_EXTENSION, canShareNatively, copyText, downloadText, safeFileName,
 import { canUseFolders, saveToFolder } from './folder';
 import { signedInvite } from './groupFiles';
 import { ballotKey } from './keys';
-import { decisionTitle } from './labels';
+import { decisionTitle, optionName } from './labels';
 import { useFolder } from './SharedFolder';
 import { Dialog, Icon, Segmented, useToast } from './ui';
 
@@ -235,8 +235,11 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
     }
   };
 
+  const uiLang = useLang();
+  const abstainedNames = d.options.filter((o) => s.abstained.includes(o.id)).map((o) => optionName(d, o, uiLang));
   const included = [
     t('share.yourScores', { count: s.scores }),
+    ...(abstainedNames.length ? [t('share.abstains', { count: abstainedNames.length, names: abstainedNames.join(', ') })] : []),
     ...(s.weights ? [t('share.yourImportance', { count: s.weights })] : []),
     t('share.countSharedNotes', { count: s.sharedNotes }),
     s.name ? t('share.asName', { name: s.name }) : named ? t('share.nameMissing') : t('share.noName'),

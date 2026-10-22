@@ -8,6 +8,7 @@ import { cellKey, cellValues, spreadLevel, type Results } from '../engine';
 import type { CellResult, Decision, Fact, Factor, Option, WeightResult } from '../format/types';
 import { formatNumber, t } from '../i18n';
 import { NameField, PughInput, ScoreInput, formatValue, heat, useFocusNew, useHoverTip } from './controls';
+import { abstainedOptions } from '../format/share';
 import { addFactor, addOption, renameFactor, renameOption, setRating, setScore, setWeight, tidyNames, type Edit, type Target } from './edit';
 import { ExternalLink } from './ExternalLink';
 import { factorGuide, factorName, optionName } from './labels';
@@ -144,6 +145,8 @@ interface Ctx extends MatrixProps {
   /** An option or factor just added: its name field takes focus. */
   focusId: string | null;
   hover: HoverStore;
+  /** Options this person abstains from: no scoring there. */
+  abstain: Set<string>;
   addOption: () => void;
   addFactor: () => void;
 }
@@ -241,6 +244,13 @@ function Cell({ c, o, f }: { c: Ctx; o: Option; f: Factor }) {
   const label = t('grid.cellLabel', { option: optionName(d, o, c.uiLang), factor: factorName(d, f, c.uiLang) });
   const h = heat(d, value);
   const groupCell = group?.cells.get(key);
+  if (c.abstain.has(o.id)) {
+    return (
+      <td className="cell abstained" onMouseEnter={() => c.hover.set(o.id)} onMouseLeave={() => c.hover.set(null)}>
+        <span className="abstained-label">{t('abstain.cell')}</span>
+      </td>
+    );
+  }
   return (
     <td
       onMouseEnter={() => c.hover.set(o.id)}
@@ -303,6 +313,7 @@ function OptionHead({ c, o }: { c: Ctx; o: Option }) {
         <div className="opt-row row-green">{s.rows[1]}</div>
         <div className="opt-row row-gold">{s.rows[2]}</div>
         <OptionStrip c={c} o={o} />
+        {c.abstain.has(o.id) && <div className="abstain-badge">{t('abstain.cell')}</div>}
       </div>
       {hover.tip}
     </th>
@@ -323,6 +334,7 @@ function OptionRowHead({ c, o }: { c: Ctx; o: Option }) {
         </div>
         <OptionStrip c={c} o={o} />
       </div>
+      {c.abstain.has(o.id) && <div className="abstain-badge">{t('abstain.cell')}</div>}
       <div className="opt-sums">
         <span className="opt-row row-blue">{s.rows[0]}</span>
         <span className="opt-row row-green">{s.rows[1]}</span>
@@ -452,6 +464,7 @@ export function Grid(props: MatrixProps) {
     notes,
     focusId,
     hover,
+    abstain: abstainedOptions(d),
     addOption: () => props.onEdit(addOption('', nextId())),
     addFactor: () => props.onEdit(addFactor('', nextId())),
   };

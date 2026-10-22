@@ -6,6 +6,7 @@ import { cellKey, cellValues } from '../engine';
 import type { Decision, Factor, Option } from '../format/types';
 import { formatNumber, t } from '../i18n';
 import { NameField, formatValue, useFocusNew } from './controls';
+import { abstainedOptions } from '../format/share';
 import { addFactor, addOption, renameFactor, renameOption, setRating, setScore, setWeight, tidyNames } from './edit';
 import { ExternalLink } from './ExternalLink';
 import { GroupValue, noteCounts, scoreLabel, type MatrixProps } from './Grid';
@@ -23,6 +24,19 @@ function ScoreRow({ p, o, f, name, extra }: { p: MatrixProps & Lookups; o: Optio
   const fact = p.facts.get(key);
   const count = p.notes.get(key) ?? 0;
   const baseline = pugh && d.settings.baselineId === o.id;
+  if (!group && p.abstain.has(o.id)) {
+    return (
+      <li className="abstained">
+        <div className="row-head">
+          <span className="name" dir="auto" lang={d.lang}>
+            {name}
+          </span>
+          <span className="abstained-label">{t('abstain.cell')}</span>
+        </div>
+        {extra}
+      </li>
+    );
+  }
   return (
     <li className={p.results.winnerId === o.id && d.settings.rows !== 'options' ? 'win' : ''}>
       <div className="row-head">
@@ -76,13 +90,16 @@ interface Lookups {
   values: Map<string, number>;
   facts: Map<string, Decision['facts'][number]>;
   notes: Map<string, number>;
+  /** Options this person abstains from. */
+  abstain: Set<string>;
 }
 
 function useLookups(d: Decision): Lookups {
   const values = useMemo(() => cellValues(d), [d]);
   const facts = useMemo(() => new Map(d.facts.map((f) => [cellKey(f.optionId, f.factorId), f])), [d.facts]);
   const notes = useMemo(() => noteCounts(d), [d]);
-  return { values, facts, notes };
+  const abstain = useMemo(() => abstainedOptions(d), [d]);
+  return { values, facts, notes, abstain };
 }
 
 function Pager({ i, total, label, previous, next, onMove }: { i: number; total: number; label: string; previous: string; next: string; onMove: (i: number) => void }) {

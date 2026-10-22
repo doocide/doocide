@@ -15,6 +15,7 @@ import {
   removeNote,
   removeOption,
   renameFactor,
+  setAbstain,
   renameOption,
   sameTarget,
   setFact,
@@ -65,7 +66,17 @@ export function DetailDialog({ d, target, readOnly, uiLang, onEdit, onClose, loc
   return (
     <Dialog title={<span dir="auto">{title}</span>} onClose={onClose}>
       {option && factor && <CellSection d={d} optionId={option.id} factorId={factor.id} readOnly={readOnly} fixed={readOnly || lock.structure} group={group} uiLang={uiLang} onEdit={onEdit} />}
-      {option && !factor && <OptionSection d={d} optionId={option.id} readOnly={readOnly || lock.structure} uiLang={uiLang} onEdit={onEdit} onClose={onClose} />}
+      {option && !factor && (
+        <OptionSection
+          d={d}
+          optionId={option.id}
+          readOnly={readOnly || lock.structure}
+          canAbstain={!readOnly && Boolean(d.group)}
+          uiLang={uiLang}
+          onEdit={onEdit}
+          onClose={onClose}
+        />
+      )}
       {factor && !option && <FactorSection d={d} factorId={factor.id} readOnly={readOnly || lock.structure} weightsReadOnly={readOnly || lock.weights} uiLang={uiLang} onEdit={onEdit} onClose={onClose} />}
       <NotesEditor d={d} target={target} readOnly={readOnly} onEdit={onEdit} />
     </Dialog>
@@ -189,7 +200,44 @@ function CellSection({
   );
 }
 
-function OptionSection({ d, optionId, readOnly, uiLang, onEdit, onClose }: { d: Decision; optionId: string; readOnly: boolean; uiLang: string; onEdit: (e: Edit) => void; onClose: () => void }) {
+/**
+ * Abstain from an option in a group decision: a conflict of interest, say. In anonymous groups it comes
+ * with a plain warning: the organizer sees which ballot abstained, and that can point to who sent it.
+ */
+function AbstainChoice({ d, optionId, onEdit }: { d: Decision; optionId: string; onEdit: (e: Edit) => void }) {
+  const g = d.group!;
+  const on = (g.abstain ?? []).includes(optionId);
+  const participant = g.role === 'participant';
+  return (
+    <div className="field">
+      <label className="check">
+        <input type="checkbox" checked={on} onChange={(e) => onEdit(setAbstain(optionId, e.target.checked))} />
+        {t('abstain.label')}
+      </label>
+      <span className="muted small">{participant ? t('abstain.help') : t('abstain.helpOrganizer')}</span>
+      {participant && g.settings.anonymity === 'anonymous' && <p className="callout small">{t('abstain.anonymous')}</p>}
+    </div>
+  );
+}
+
+function OptionSection({
+  d,
+  optionId,
+  readOnly,
+  canAbstain,
+  uiLang,
+  onEdit,
+  onClose,
+}: {
+  d: Decision;
+  optionId: string;
+  readOnly: boolean;
+  /** A group decision this person scores: they can abstain from an option. */
+  canAbstain: boolean;
+  uiLang: string;
+  onEdit: (e: Edit) => void;
+  onClose: () => void;
+}) {
   const option = d.options.find((o) => o.id === optionId)!;
   const ask = useConfirm();
   const [description, setDescription] = useState(option.description ?? '');
@@ -214,6 +262,7 @@ function OptionSection({ d, optionId, readOnly, uiLang, onEdit, onClose }: { d: 
         <span className="field-label">{t('detail.description')}</span>
         <textarea rows={3} value={description} dir="auto" lang={d.lang} readOnly={readOnly} maxLength={LIMITS.text.description} onChange={(e) => setDescription(e.target.value)} onBlur={() => onEdit(setOptionDescription(optionId, description))} />
       </label>
+      {canAbstain && !(pugh && isBaseline) && <AbstainChoice d={d} optionId={optionId} onEdit={onEdit} />}
       {!readOnly && (
         <div className="actions start">
           {pugh && (

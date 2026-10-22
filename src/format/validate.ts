@@ -261,6 +261,16 @@ function uniqueId(v: unknown, seen: Set<string>): string {
   return id;
 }
 
+/** Option ids, each once, at most one per option a decision can have. With a set, only the ids in it, minus `skip`. */
+function cleanIdList(v: unknown, valid: Set<string> | null, skip?: string): string[] {
+  const out = new Set<string>();
+  for (const item of list(v, LIMITS.options, 'options')) {
+    const id = refId(item, valid);
+    if (id && id !== skip) out.add(id);
+  }
+  return [...out];
+}
+
 /** A reference to an option or factor. With no set to check against (a ballot read on its own), any well-formed id. */
 const refId = (v: unknown, valid: Set<string> | null): string | undefined =>
   typeof v !== 'string' ? undefined : valid ? (valid.has(v) ? v : undefined) : cleanId(v);
@@ -424,6 +434,7 @@ export function validateBallot(raw: unknown): Ballot {
   const weights = cleanWeights(get(raw, 'weights'), null);
   const key = cleanKey(get(raw, 'key'));
   const sig = cleanKey(get(raw, 'sig'));
+  const abstain = cleanIdList(get(raw, 'abstain'), null);
   return {
     decisionId,
     inviteId,
@@ -436,6 +447,7 @@ export function validateBallot(raw: unknown): Ballot {
     pugh: cleanScores(get(raw, 'pugh'), null, null, -2, 2, true),
     ...(weights.length > 0 && { weights }),
     notes: cleanNotes(get(raw, 'notes'), null, null, false, now).map(({ author: _a, ...n }) => n),
+    ...(abstain.length > 0 && { abstain }),
     ...(key && { key }),
     ...(sig && { sig }),
   };
@@ -460,10 +472,14 @@ function matchTo(b: Ballot, s: Shape): BallotMatch {
   const { settings } = s;
   // Without group rules to go by, a ballot is treated as anonymous.
   const anonymous = s.group?.anonymity !== 'named';
-  const scores = cleanScores(b.scores, s.optionIds, s.factorIds, 0, settings.scaleMax, false);
-  const pugh = cleanScores(b.pugh, s.optionIds, s.factorIds, -settings.pughSteps, settings.pughSteps, true, settings.baselineId);
+  // Abstaining from an option and scoring it can't both stand: the abstention wins. Never the baseline, which nobody scores.
+  const abstain = cleanIdList(b.abstain, s.optionIds, settings.mode === 'pugh' ? settings.baselineId : undefined);
+  const abstained = new Set(abstain);
+  const scored = new Set([...s.optionIds].filter((id) => !abstained.has(id)));
+  const scores = cleanScores(b.scores, scored, s.factorIds, 0, settings.scaleMax, false);
+  const pugh = cleanScores(b.pugh, scored, s.factorIds, -settings.pughSteps, settings.pughSteps, true, settings.baselineId);
   const weights = s.group?.weights === 'everyone' ? cleanWeights(b.weights, s.factorIds) : [];
-  const notes = cleanNotes(b.notes, s.optionIds, s.factorIds, false, b.createdAt).map(({ author: _a, ...n }) =>
+  const notes = cleanNotes(b.notes.filter((n) => !n.optionId || !abstained.has(n.optionId)), s.optionIds, s.factorIds, false, b.createdAt).map(({ author: _a, ...n }) =>
     anonymous ? { ...n, createdAt: dayOnly(n.createdAt) } : n,
   );
   const author = !anonymous && b.author ? b.author : undefined;
@@ -479,6 +495,7 @@ function matchTo(b: Ballot, s: Shape): BallotMatch {
       pugh,
       ...(weights.length > 0 && { weights }),
       notes,
+      ...(abstain.length > 0 && { abstain }),
       // The key stays, so later ballots from this person can be held to it. The signature was checked on arrival.
       ...(b.key && { key: b.key }),
     },
@@ -532,6 +549,7 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
   const role = get(v, 'role') === 'participant' ? 'participant' : 'organizer';
   const settings = cleanGroupSettings(get(v, 'settings'));
   const myName = settings.anonymity === 'named' ? cleanText(get(v, 'myName'), T.author) : '';
+  const abstain = cleanIdList(get(v, 'abstain'), shape.optionIds, shape.settings.mode === 'pugh' ? shape.settings.baselineId : undefined);
 
   if (role === 'participant') {
     const result = cleanGroupResult(get(v, 'result'), shape.optionIds, shape.factorIds, shape.settings);
@@ -555,6 +573,7 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
       includeOwn: false,
       anonymityLocked: true,
       ...(myName && { myName }),
+      ...(abstain.length > 0 && { abstain }),
       sourceId,
       voterId,
       revision: intIn(get(v, 'revision'), 0, LIMITS.revision) ?? 0,
@@ -610,6 +629,7 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
     includeOwn: get(v, 'includeOwn') !== false,
     anonymityLocked: get(v, 'anonymityLocked') === true || ballots.length > 0,
     ...(myName && { myName }),
+    ...(abstain.length > 0 && { abstain }),
     ...(confirmed.length > 0 && { confirmed }),
     ...(lastInviteAt && { lastInviteAt }),
     ...(lastInviteShape && { lastInviteShape }),

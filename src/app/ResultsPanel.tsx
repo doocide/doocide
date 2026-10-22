@@ -76,7 +76,22 @@ function Disagreements({ d, result, uiLang }: { d: Decision; result: GroupResult
   );
 }
 
-export function ResultsPanel({ d, results, analysis, uiLang, group }: { d: Decision; results: Results; analysis: Analysis; uiLang: string; group?: GroupResult }) {
+export function ResultsPanel({
+  d,
+  results,
+  analysis,
+  uiLang,
+  group,
+  abstained = [],
+}: {
+  d: Decision;
+  results: Results;
+  analysis: Analysis;
+  uiLang: string;
+  group?: GroupResult;
+  /** Options you abstain from, by name: left out of your ranking, listed under it. */
+  abstained?: string[];
+}) {
   const pugh = d.settings.mode === 'pugh';
   const winner = d.options.find((o) => o.id === results.winnerId);
   const winnerName = winner ? optionName(d, winner, uiLang) : '';
@@ -140,6 +155,17 @@ export function ResultsPanel({ d, results, analysis, uiLang, group }: { d: Decis
           );
         })}
       </ol>
+      {abstained.length > 0 && (
+        <p className="muted small">
+          {t('results.abstained')}{' '}
+          {abstained.map((name, i) => (
+            <span key={i}>
+              {i > 0 && ', '}
+              <bdi lang={d.lang}>{name}</bdi>
+            </span>
+          ))}
+        </p>
+      )}
       {group && <Disagreements d={d} result={group} uiLang={uiLang} />}
     </section>
   );

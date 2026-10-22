@@ -144,6 +144,11 @@ export interface Ballot {
   /** Shared notes only, with no author and the date only. */
   notes: Note[];
   /**
+   * Options this person abstained from (a conflict of interest, say). The ballot has no scores for
+   * them, and they're left out of the group's result rather than counted as zero. Only when not empty.
+   */
+  abstain?: string[];
+  /**
    * The public key the ballot is signed with (base64url, raw P-256). Anonymous ballots use a key made
    * for this one decision; named ballots use the person's device key. See src/format/crypto.ts.
    */
@@ -182,6 +187,11 @@ export interface Group {
   anonymityLocked: boolean;
   /** Name shown with the organizer's invites or on the participant's ballot (named groups only). */
   myName?: string;
+  /**
+   * Options this person abstains from. Their scores for them stay on this device, so taking part
+   * again brings them back, but they never go out on a ballot or count in the group's result.
+   */
+  abstain?: string[];
   /** Organizer, named groups: keys the organizer confirmed by comparing short codes with their owner. */
   confirmed?: string[];
   /** Organizer: when the last invite was made. From then on the scoring rules are locked: people may be scoring with them. */
