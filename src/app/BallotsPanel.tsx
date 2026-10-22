@@ -7,6 +7,7 @@ import type { Decision, StoredBallot } from '../format/types';
 import { formatDate, t } from '../i18n';
 import { CompareCodes, useDeviceKey, useShortCode } from './codes';
 import { confirmKey, removeBallot, setBallotIncluded, setIncludeOwn, unconfirmKey, type Edit } from './edit';
+import { editedSinceInvite } from './invites';
 import { Icon, useConfirm } from './ui';
 
 /** A ballot's name: the one its sender typed (named groups), or a number. */
@@ -42,6 +43,7 @@ export function BallotsPanel({ d, voters, onEdit, onInvite, onOpenBallots }: Pro
         {anonymity === 'anonymous' ? t('group.anonymousShort') : t('group.namedShort')}
       </p>
       {expected !== undefined && count > expected && <p className="callout warn small">{t('ballots.overCount', { count, expected })}</p>}
+      {editedSinceInvite(d) && <p className="callout warn small">{t('ballots.editedSinceInvite')}</p>}
       {anonymity === 'anonymous' && voters === 2 && <p className="callout small">{t('ballots.twoReveal')}</p>}
 
       <ul className="ballot-list">

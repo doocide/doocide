@@ -53,6 +53,8 @@ export function joinInvite(invite: Invite, lang: string, signed = false): Decisi
       includeOwn: false,
       anonymityLocked: true,
       sourceId: d.id,
+      // The organizer's last change before this invite: a later, older invite can't roll this copy back.
+      inviteVersion: d.updatedAt,
       // Made fresh for this decision only, so nothing links this person's ballots across decisions.
       voterId: newId(22),
       revision: 0,

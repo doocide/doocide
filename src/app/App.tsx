@@ -12,6 +12,7 @@ import { addBallots, refreshFromInvite, type Edit } from './edit';
 import { FILE_EXTENSION, pickFileText, pickFilesText } from './files';
 import { ImportDialog } from './ImportDialog';
 import { TemplatesDialog } from './InfoDialogs';
+import { hasChanges, inviteChanges, isOlderInvite } from './invites';
 import { findSealer, forgetDecisionKey } from './keys';
 import { decisionTitle } from './labels';
 import { Library } from './Library';
@@ -414,6 +415,9 @@ export function App() {
     const invite = view.env.data;
     const { signed } = view;
     const joined = findJoined(decisions.values(), invite);
+    // Someone who already joined: an older invite changes nothing; a newer one says what it changes.
+    const older = joined ? isOlderInvite(joined, invite) : false;
+    const changes = joined && !older ? inviteChanges(joined, invite) : undefined;
     return (
       <DecisionView
         d={{ ...invite.decision, ...(invite.result && { groupResult: invite.result }) }}
@@ -426,10 +430,15 @@ export function App() {
             joined: Boolean(joined),
             // Mirrors joinInvite: only a signed invite's sealing key is used.
             sealed: signed && Boolean(invite.sealKey),
+            older,
+            ...(changes && { changes }),
           },
           onSave: () => {
             if (joined) {
-              edit(joined.id, refreshFromInvite(invite, signed));
+              if (!older) {
+                edit(joined.id, refreshFromInvite(invite, signed));
+                if (changes && hasChanges(changes)) toast(t('incoming.updatedToast'));
+              }
               go({ name: 'decision', id: joined.id }, true);
             } else {
               add(joinInvite(invite, getLang(), signed));

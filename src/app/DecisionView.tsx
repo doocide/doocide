@@ -10,6 +10,7 @@ import { DetailDialog } from './DetailDialog';
 import { ballotSealed, confirmOrganizer, scoringLocked, setRows, setTitle, structureLocked, tidyNames, weightsLocked, type Edit, type Target } from './edit';
 import { downloadText, safeFileName } from './files';
 import { Grid, type GroupCells, type VoterValue } from './Grid';
+import { hasChanges, type InviteChanges } from './invites';
 import { ResultsPanel } from './ResultsPanel';
 import { SettingsDialog } from './SettingsDialog';
 import { ShareDialog } from './ShareDialog';
@@ -18,7 +19,17 @@ import { Icon, Menu, Segmented, useMediaQuery } from './ui';
 export interface Incoming {
   kind: Exclude<Kind, 'ballot'>;
   /** An invite to score: the group's rules, who sent it (and the key that signed it), and whether this person already started. */
-  invite?: { settings: GroupSettings; organizerName?: string; organizerKey?: string; joined: boolean; sealed: boolean };
+  invite?: {
+    settings: GroupSettings;
+    organizerName?: string;
+    organizerKey?: string;
+    joined: boolean;
+    sealed: boolean;
+    /** Older than the invite this person's copy already follows: opening it changes nothing. */
+    older?: boolean;
+    /** A newer invite for someone who already joined: what it changes in their copy. */
+    changes?: InviteChanges;
+  };
   onSave: () => void;
   onDiscard: () => void;
 }
@@ -44,6 +55,38 @@ function TypedName({ name, verified = false }: { name: string; verified?: boolea
   );
 }
 
+/** One kind of change, with the names involved: names are the organizer's text, kept apart from the app's words. */
+function ChangeLine({ label, names }: { label: string; names: string[] }) {
+  return (
+    <li>
+      {label}
+      {names.length > 0 && ': '}
+      {names.map((n, i) => (
+        <span key={i}>
+          {i > 0 && ', '}
+          <bdi className="author">{n}</bdi>
+        </span>
+      ))}
+    </li>
+  );
+}
+
+/** What a newer invite changes for someone who already joined. */
+function InviteChangeList({ c }: { c: InviteChanges }) {
+  if (!hasChanges(c)) return <p className="small muted">{t('incoming.noChanges')}</p>;
+  return (
+    <ul className="change-list small">
+      {c.addedOptions.length > 0 && <ChangeLine label={t('incoming.addedOptions', { count: c.addedOptions.length })} names={c.addedOptions} />}
+      {c.addedFactors.length > 0 && <ChangeLine label={t('incoming.addedFactors', { count: c.addedFactors.length })} names={c.addedFactors} />}
+      {c.removedOptions.length > 0 && <ChangeLine label={t('incoming.removedOptions', { count: c.removedOptions.length })} names={c.removedOptions} />}
+      {c.removedFactors.length > 0 && <ChangeLine label={t('incoming.removedFactors', { count: c.removedFactors.length })} names={c.removedFactors} />}
+      {c.renamed > 0 && <ChangeLine label={t('incoming.renamed', { count: c.renamed })} names={[]} />}
+      {c.reweighted > 0 && <ChangeLine label={t('incoming.reweighted', { count: c.reweighted })} names={[]} />}
+      {c.rules && <ChangeLine label={t('incoming.rulesChanged')} names={[]} />}
+    </ul>
+  );
+}
+
 function IncomingBanner({ incoming, title }: { incoming: Incoming; title: string }) {
   const { kind, invite } = incoming;
   const code = useShortCode(invite?.organizerKey);
@@ -65,6 +108,13 @@ function IncomingBanner({ incoming, title }: { incoming: Incoming; title: string
         {invite && <p className="small">{invite.settings.anonymity === 'anonymous' ? t('group.anonymousPromise') : t('group.namedPromise')}</p>}
         {code && <p className="small muted">{t('incoming.signedCode', { code })}</p>}
         {invite && !invite.sealed && <p className="small warn-text">{t('incoming.notSealed')}</p>}
+        {invite?.older && <p className="small warn-text">{t('incoming.olderInvite')}</p>}
+        {invite?.changes && (
+          <>
+            <p className="small">{t('incoming.newerInvite')}</p>
+            <InviteChangeList c={invite.changes} />
+          </>
+        )}
       </div>
       <div className="actions">
         <button className="button" onClick={incoming.onDiscard}>
@@ -76,9 +126,11 @@ function IncomingBanner({ incoming, title }: { incoming: Incoming; title: string
             : kind === 'backup'
               ? t('incoming.restore')
               : kind === 'invite'
-                ? invite?.joined
-                  ? t('incoming.continue')
-                  : t('incoming.startScoring')
+                ? invite?.older
+                  ? t('incoming.openBallot')
+                  : invite?.joined
+                    ? t('incoming.continue')
+                    : t('incoming.startScoring')
                 : t('incoming.save')}
         </button>
       </div>

@@ -518,6 +518,7 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
     const organizerKey = cleanKey(get(v, 'organizerKey'));
     const organizerSealKey = cleanKey(get(v, 'organizerSealKey'));
     const key = cleanKey(get(v, 'key'));
+    const inviteVersion = get(v, 'inviteVersion') === undefined ? undefined : cleanDate(get(v, 'inviteVersion'), '');
     return {
       role,
       settings,
@@ -534,6 +535,7 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
       ...(organizerKey && { organizerKey }),
       ...(organizerKey && get(v, 'organizerConfirmed') === true && { organizerConfirmed: true }),
       ...(organizerSealKey && { organizerSealKey }),
+      ...(inviteVersion && { inviteVersion }),
       ...(key && { key }),
       ...(result && { result }),
     };
@@ -561,6 +563,9 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
   }
   const ballots = [...byVoter.values()];
   const confirmed = settings.anonymity === 'named' ? [...new Set(list(get(v, 'confirmed'), LIMITS.ballots, 'keys').flatMap((k) => cleanKey(k) ?? []))] : [];
+  const lastInviteAt = get(v, 'lastInviteAt') === undefined ? undefined : cleanDate(get(v, 'lastInviteAt'), '');
+  const rawShape = get(v, 'lastInviteShape');
+  const lastInviteShape = typeof rawShape === 'string' && /^[a-z0-9]{1,16}$/.test(rawShape) ? rawShape : undefined;
   return {
     role,
     settings,
@@ -570,6 +575,8 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
     anonymityLocked: get(v, 'anonymityLocked') === true || ballots.length > 0,
     ...(myName && { myName }),
     ...(confirmed.length > 0 && { confirmed }),
+    ...(lastInviteAt && { lastInviteAt }),
+    ...(lastInviteShape && { lastInviteShape }),
   };
 }
 

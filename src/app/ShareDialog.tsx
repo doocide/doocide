@@ -21,7 +21,8 @@ import {
 import type { AnyEnvelope, BallotEnvelope, Decision, EncryptedEnvelope, GroupResult } from '../format/types';
 import { t } from '../i18n';
 import { useDeviceKey, useShortCode } from './codes';
-import { ballotSealed, checkOrganizerFirst, confirmOrganizer, markSent, restartVoter, setMyName, type Edit } from './edit';
+import { ballotSealed, checkOrganizerFirst, confirmOrganizer, markInvited, markSent, restartVoter, setMyName, type Edit } from './edit';
+import { inviteShape } from './invites';
 import { FILE_EXTENSION, canShareNatively, copyText, downloadText, safeFileName, shareNatively } from './files';
 import { ballotKey, deviceKey, sealingKey } from './keys';
 import { decisionTitle } from './labels';
@@ -254,7 +255,7 @@ export function ShareDialog({ d, result, initial, onEdit, onClose }: Props) {
   return <OwnerShare d={d} result={result} onEdit={onEdit} onClose={onClose} {...(initial && { initial })} />;
 }
 
-function OwnerShare({ d, result, initial, onClose }: Props) {
+function OwnerShare({ d, result, initial, onEdit, onClose }: Props) {
   const organizer = d.group?.role === 'organizer';
   const [kind, setKind] = useState<Kind>(initial ?? (organizer ? 'invite' : 'decision'));
   const [link, setLink] = useState<string | null>(null);
@@ -279,6 +280,8 @@ function OwnerShare({ d, result, initial, onClose }: Props) {
   const outgoing = async (): Promise<Outgoing> => {
     const env = await envelope();
     assertShareable(env);
+    // Remember what this invite showed, so later edits can be flagged as not yet sent.
+    if (kind === 'invite') onEdit(markInvited(inviteShape(d)));
     return locking ? lockWithPassphrase(JSON.stringify(env), passphrase) : env;
   };
 

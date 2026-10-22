@@ -26,8 +26,12 @@ const isParticipant = (d: Decision) => d.group?.role === 'participant';
 /** A participant's copy belongs to the organizer: options, factors, guides and facts stay as invited. */
 export const structureLocked = (d: Decision) => isParticipant(d);
 
-/** Scoring rules can't change under ballots that were scored with them. */
-export const scoringLocked = (d: Decision) => isParticipant(d) || (d.group?.role === 'organizer' && d.group.ballots.length > 0);
+/**
+ * Scoring rules can't change under ballots that were scored with them, or once invites are out: people
+ * may already be scoring on that scale, and their ballots would be squeezed into a new one.
+ */
+export const scoringLocked = (d: Decision) =>
+  isParticipant(d) || (d.group?.role === 'organizer' && (d.group.ballots.length > 0 || Boolean(d.group.lastInviteAt)));
 
 /**
  * Participant: their ballot will be sealed to the organizer. Only when the invite was signed and
@@ -351,6 +355,8 @@ export const setIncludeOwn = (includeOwn: boolean): Edit => (d) =>
 export const refreshFromInvite = (invite: Invite, signed: boolean): Edit => (d) => {
   const g = d.group;
   if (g?.role !== 'participant' || g.sourceId !== invite.decision.id) return d;
+  // An invite older than the one this copy follows would roll it back and lose scores for newer items.
+  if (g.inviteVersion && invite.decision.updatedAt < g.inviteVersion) return d;
   // Once an invite came signed, only invites signed by that same key may change this copy.
   if (g.organizerKey && (!signed || invite.key !== g.organizerKey)) return d;
   const inv = invite.decision;
@@ -378,6 +384,7 @@ export const refreshFromInvite = (invite: Invite, signed: boolean): Edit => (d) 
     notes: d.notes.filter((n) => (!n.optionId || optionIds.has(n.optionId)) && (!n.factorId || factorIds.has(n.factorId))),
     group: {
       ...kept,
+      inviteVersion: inv.updatedAt,
       settings: { ...invite.settings, anonymity: g.settings.anonymity },
       ...(invite.result && { result: invite.result }),
       ...(!g.organizerKey && signed && invite.key && { organizerKey: invite.key }),
@@ -385,6 +392,13 @@ export const refreshFromInvite = (invite: Invite, signed: boolean): Edit => (d) 
     },
   });
 };
+
+/**
+ * Organizer: an invite went out showing this shape (see invites.ts). Bookkeeping, not a change to the
+ * decision, so the last-changed time stays as it is.
+ */
+export const markInvited = (shape: string): Edit => (d) =>
+  d.group?.role === 'organizer' ? { ...d, group: { ...d.group, lastInviteAt: new Date().toISOString(), lastInviteShape: shape } } : d;
 
 /** A participant sends their ballot (again): the revision goes up, so it replaces the one sent before. */
 export const markSent: Edit = (d) =>

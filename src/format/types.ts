@@ -177,6 +177,10 @@ export interface Group {
   myName?: string;
   /** Organizer, named groups: keys the organizer confirmed by comparing short codes with their owner. */
   confirmed?: string[];
+  /** Organizer: when the last invite was made. From then on the scoring rules are locked: people may be scoring with them. */
+  lastInviteAt?: string;
+  /** Organizer: a short fingerprint of what the last invite showed, to notice edits people haven't received yet. */
+  lastInviteShape?: string;
   /** Participant: the organizer's decision id, which the ballot points at. */
   sourceId?: string;
   /** Participant: this person's random id for this decision. */
@@ -194,6 +198,8 @@ export interface Group {
   organizerConfirmed?: boolean;
   /** Participant: the public key their ballots were signed with, to notice when this device can't sign as them. */
   key?: string;
+  /** Participant: the version (the organizer's last-change time) of the invite this copy follows. Older invites are refused. */
+  inviteVersion?: string;
   /** Participant, open scoring: the group's results when the invite was made. */
   result?: GroupResult;
 }

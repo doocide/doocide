@@ -49,7 +49,7 @@ export function SettingsDialog({ d, uiLang, onEdit, onClose }: { d: Decision; ui
 
       {locked && (
         <p className="callout small">
-          {participant ? t('settings.lockedByOrganizer') : t('settings.lockedByBallots')}
+          {participant ? t('settings.lockedByOrganizer') : d.group?.ballots.length ? t('settings.lockedByBallots') : t('settings.lockedByInvites')}
         </p>
       )}
       <div className="field">
