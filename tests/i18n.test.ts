@@ -44,6 +44,9 @@ describe('language packs', () => {
       ...['score', 'results', 'setup'].map((n) => `tabs.${n}`),
       ...['auto', 'light', 'dark'].map((n) => `theme.${n}`),
       ...['short', 'ok', 'strong'].map((n) => `share.strength.${n}`),
+      ...['never', 'publish', 'approval'].map((n) => `group.folderHelp.${n}`),
+      ...['publish', 'approval'].map((n) => `group.folderPromise.${n}`),
+      ...['not-signed', 'not-organizer', 'other-decision', 'not-results'].map((n) => `updates.refused.${n}`),
       ...['too-big', 'too-deep', 'bad-data', 'not-doocide', 'newer-version', 'encrypted', 'invalid', 'template-missing', 'ballot-unknown', 'bad-signature', 'sealed-elsewhere'].map((n) => `error.${n}`),
     ];
     for (const key of [...used, ...dynamic]) expect(en, key).toHaveProperty([key]);

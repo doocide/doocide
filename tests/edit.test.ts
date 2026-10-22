@@ -125,3 +125,14 @@ describe('sealing and the organizer check', () => {
     expect(checkOrganizerFirst(joinInvite(await invite(true, true), 'en', false))).toBe(false);
   });
 });
+
+describe('adding options and factors', () => {
+  it('can use an id the screen chose, so it can focus the new name field, and never adds the same id twice', () => {
+    const d = addOption('', 'newOption')(sampleDecision());
+    expect(d.options.at(-1)).toEqual({ id: 'newOption', name: '' });
+    expect(addOption('', 'newOption')(d)).toBe(d);
+    const f = addFactor('', 'newFactor')(d);
+    expect(f.factors.at(-1)).toMatchObject({ id: 'newFactor', name: '', weight: 3 });
+    expect(addFactor('', 'newFactor')(f)).toBe(f);
+  });
+});

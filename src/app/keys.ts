@@ -6,15 +6,18 @@
 //   linked to each other or to you. It is deleted with the decision.
 // - A sealing key: made for one decision its organizer invites people to. Ballots are sealed to it, so
 //   only the organizer can open them. It can only agree secrets, never sign. Deleted with the decision.
+// - A results key: what a group results file's passphrase turned into, kept by the organizer and by
+//   each person who entered it once, so later files open without asking again. Never the passphrase.
 // Private keys are non-extractable CryptoKeys: they can sign or open, but they can't be read out or backed up.
 
 import { generateSealer, generateSigner, type Sealer, type Signer } from '../format/crypto';
-import type { Decision } from '../format/types';
-import { deleteKey, getKey, putKey } from './store';
+import type { Decision, Kdf } from '../format/types';
+import { deleteKey, getKey, getSecret, putKey, putSecret } from './store';
 
 const DEVICE = 'device';
 const forDecision = (decisionId: string) => `decision:${decisionId}`;
 const forSealing = (decisionId: string) => `seal:${decisionId}`;
+const forResults = (decisionId: string) => `results:${decisionId}`;
 
 // One lookup at a time per key, so two quick sends can't each make a different key.
 const pending = new Map<string, Promise<Signer | Sealer>>();
@@ -53,9 +56,23 @@ export async function findSealer(publicKey: string, decisionIds: string[]): Prom
   return null;
 }
 
-/** Deletes every key made for this decision: its anonymous signing key and its sealing key. */
+const sameKdf = (a: Kdf, b: Kdf) => a.name === b.name && a.hash === b.hash && a.iterations === b.iterations && a.salt === b.salt;
+
+/** The key kept for this decision's results file, if it was made with these settings (a new passphrase has a new salt). */
+export async function resultsKey(decisionId: string, kdf: Kdf): Promise<CryptoKey | null> {
+  const found = await getSecret(forResults(decisionId));
+  return found && sameKdf(found.kdf, kdf) ? found.secret : null;
+}
+
+/** Keeps a results key that just worked, replacing any older one for this decision. */
+export const keepResultsKey = (decisionId: string, secret: CryptoKey, kdf: Kdf): Promise<void> =>
+  putSecret({ id: forResults(decisionId), secret, kdf, createdAt: new Date().toISOString() });
+
+export const forgetResultsKey = (decisionId: string): Promise<void> => deleteKey(forResults(decisionId));
+
+/** Deletes every key made for this decision: its anonymous signing key, its sealing key and its results key. */
 export async function forgetDecisionKey(decisionId: string): Promise<void> {
-  for (const id of [forDecision(decisionId), forSealing(decisionId)]) {
+  for (const id of [forDecision(decisionId), forSealing(decisionId), forResults(decisionId)]) {
     pending.delete(id);
     await deleteKey(id);
   }

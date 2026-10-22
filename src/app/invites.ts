@@ -13,7 +13,12 @@ export function inviteShape(d: Decision): string {
   const { rows: _rows, ...settings } = d.settings;
   const text = canonicalJson({
     settings,
-    rules: d.group && { scoring: d.group.settings.scoring, weights: d.group.settings.weights, combine: d.group.settings.combine },
+    rules: d.group && {
+      scoring: d.group.settings.scoring,
+      weights: d.group.settings.weights,
+      combine: d.group.settings.combine,
+      folderResults: d.group.settings.folderResults,
+    },
     options: d.options.map((o) => [o.id, o.name, o.description ?? '']),
     factors: d.factors.map((f) => [f.id, f.name, f.guide ?? '', organizerWeights ? f.weight : 0]),
     facts: d.facts.map((f) => [f.optionId, f.factorId, f.text, f.url ?? '']),
@@ -70,7 +75,11 @@ export function inviteChanges(d: Decision, invite: Invite): InviteChanges {
       s.scaleMax !== n.scaleMax ||
       s.pughSteps !== n.pughSteps ||
       s.baselineId !== n.baselineId ||
-      (g !== undefined && (g.scoring !== invite.settings.scoring || g.weights !== invite.settings.weights || g.combine !== invite.settings.combine)),
+      (g !== undefined &&
+        (g.scoring !== invite.settings.scoring ||
+          g.weights !== invite.settings.weights ||
+          g.combine !== invite.settings.combine ||
+          (g.folderResults ?? 'never') !== (invite.settings.folderResults ?? 'never'))),
   };
 }
 

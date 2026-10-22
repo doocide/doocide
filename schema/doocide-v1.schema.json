@@ -38,7 +38,9 @@
     },
     "to": { "$ref": "#/definitions/publicKey", "description": "Sealed: the recipient's sealing key." },
     "epk": { "$ref": "#/definitions/publicKey", "description": "Sealed: the one-time ECDH key." },
-    "salt": { "type": "string", "pattern": "^[A-Za-z0-9_-]{16,64}$", "description": "Sealed: the HKDF salt." }
+    "salt": { "type": "string", "pattern": "^[A-Za-z0-9_-]{16,64}$", "description": "Sealed: the HKDF salt." },
+    "key": { "$ref": "#/definitions/publicKey", "description": "Group results files (kind decision) only: the organizer's device key, the same that signs their invites." },
+    "sig": { "$ref": "#/definitions/signature", "description": "ECDSA P-256 signature, by key, over the canonical JSON of the rest of the cleaned envelope (doocide, kind, enc, data, key)." }
   },
   "if": { "properties": { "enc": { "enum": ["passphrase", "sealed"] } }, "required": ["enc"] },
   "then": {
@@ -225,7 +227,11 @@
         "scoring": { "enum": ["blind", "open"], "description": "blind: invites carry no one's scores. open: invites carry the group's combined results so far." },
         "weights": { "enum": ["organizer", "everyone"], "description": "Who sets importance. everyone: each ballot carries weights, combined like scores." },
         "combine": { "enum": ["mean", "median"], "description": "How the ballots for one cell combine." },
-        "expected": { "type": "integer", "minimum": 1, "maximum": 1000, "description": "How many people are expected to send ballots." }
+        "expected": { "type": "integer", "minimum": 1, "maximum": 1000, "description": "How many people are expected to send ballots." },
+        "folderResults": {
+          "enum": ["never", "publish", "approval"],
+          "description": "Group results in the shared folder: never (also when absent), when the organizer publishes them, or after each approval. approval is allowed with open scoring only; with blind scoring it reads as publish."
+        }
       },
       "additionalProperties": false
     },

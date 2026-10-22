@@ -162,6 +162,7 @@ export function Library({
               {t('library.openFile')}
             </button>
           </div>
+          <p className="muted small">{t('library.openFileNote')}</p>
         </section>
 
         {decisions.length > 0 && (

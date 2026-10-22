@@ -5,7 +5,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { cellKey, cellValues } from '../engine';
 import type { Decision, Factor, Option } from '../format/types';
 import { formatNumber, t } from '../i18n';
-import { NameField, formatValue } from './controls';
+import { NameField, formatValue, useFocusNew } from './controls';
 import { addFactor, addOption, renameFactor, renameOption, setRating, setScore, setWeight, tidyNames } from './edit';
 import { ExternalLink } from './ExternalLink';
 import { GroupValue, noteCounts, scoreLabel, type MatrixProps } from './Grid';
@@ -226,6 +226,7 @@ export function Cards(props: MatrixProps) {
 /** Phones: add and rename options and factors. */
 export function Setup({ d, results, readOnly, uiLang, onEdit, onDetail, lock }: MatrixProps) {
   const fixed = readOnly || Boolean(lock?.structure);
+  const { focusId, nextId } = useFocusNew();
   return (
     <div className="setup">
       <section>
@@ -233,7 +234,16 @@ export function Setup({ d, results, readOnly, uiLang, onEdit, onDetail, lock }: 
         <ul className="setup-list">
           {d.options.map((o) => (
             <li key={o.id}>
-              <NameField                value={o.name}                placeholder={optionName(d, o, uiLang)}                lang={d.lang}                readOnly={fixed}                label={t('grid.optionName')}                onChange={(v) => onEdit(renameOption(o.id, v))}                onBlur={() => onEdit(tidyNames)}              />
+              <NameField
+                value={o.name}
+                placeholder={optionName(d, o, uiLang)}
+                lang={d.lang}
+                readOnly={fixed}
+                label={t('grid.optionName')}
+                autoFocus={focusId === o.id}
+                onChange={(v) => onEdit(renameOption(o.id, v))}
+                onBlur={() => onEdit(tidyNames)}
+              />
               <span className="muted small">{results.byOption.has(o.id) ? scoreLabel(d, results, o.id) : ''}</span>
               <button className="icon-button small" onClick={() => onDetail({ optionId: o.id })} aria-label={t('grid.optionDetails', { name: optionName(d, o, uiLang) })}>
                 <Icon name="more" size={16} />
@@ -242,7 +252,7 @@ export function Setup({ d, results, readOnly, uiLang, onEdit, onDetail, lock }: 
           ))}
         </ul>
         {!fixed && (
-          <button className="button ghost" onClick={() => onEdit(addOption(''))}>
+          <button className="button ghost" onClick={() => onEdit(addOption('', nextId()))}>
             <Icon name="plus" size={18} />
             {t('grid.addOption')}
           </button>
@@ -255,7 +265,16 @@ export function Setup({ d, results, readOnly, uiLang, onEdit, onDetail, lock }: 
             const name = factorName(d, f, uiLang);
             return (
               <li key={f.id}>
-                <NameField                  value={f.name}                  placeholder={name}                  lang={d.lang}                  readOnly={fixed}                  label={t('grid.factorName')}                  onChange={(v) => onEdit(renameFactor(f.id, v))}                  onBlur={() => onEdit(tidyNames)}                />
+                <NameField
+                  value={f.name}
+                  placeholder={name}
+                  lang={d.lang}
+                  readOnly={fixed}
+                  label={t('grid.factorName')}
+                  autoFocus={focusId === f.id}
+                  onChange={(v) => onEdit(renameFactor(f.id, v))}
+                  onBlur={() => onEdit(tidyNames)}
+                />
                 <Stars value={Math.round(f.weight)} readOnly={readOnly || Boolean(lock?.weights)} label={t('grid.importanceOf', { name })} onChange={(w) => onEdit(setWeight(f.id, w))} />
                 <button className="icon-button small" onClick={() => onDetail({ factorId: f.id })} aria-label={t('grid.factorDetails', { name })}>
                   <Icon name="more" size={16} />
@@ -265,7 +284,7 @@ export function Setup({ d, results, readOnly, uiLang, onEdit, onDetail, lock }: 
           })}
         </ul>
         {!fixed && (
-          <button className="button ghost" onClick={() => onEdit(addFactor(''))}>
+          <button className="button ghost" onClick={() => onEdit(addFactor('', nextId()))}>
             <Icon name="plus" size={18} />
             {t('grid.addFactor')}
           </button>

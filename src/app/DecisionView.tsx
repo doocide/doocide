@@ -9,6 +9,8 @@ import { CompareCodes, useShortCode } from './codes';
 import { DetailDialog } from './DetailDialog';
 import { ballotSealed, confirmOrganizer, scoringLocked, setRows, setTitle, structureLocked, tidyNames, weightsLocked, type Edit, type Target } from './edit';
 import { downloadText, safeFileName } from './files';
+import { canUseFolders, resultsFileName } from './folder';
+import { useFolder } from './SharedFolder';
 import { Grid, type GroupCells, type VoterValue } from './Grid';
 import { hasChanges, type InviteChanges } from './invites';
 import { ResultsPanel } from './ResultsPanel';
@@ -44,6 +46,10 @@ interface Props {
   onDelete: () => void;
   /** Organizer: pick ballot files to review. */
   onOpenBallots?: () => void;
+  /** Organizer: check the shared folder for new ballots. */
+  onCollectBallots?: () => void;
+  /** Participant: look for newer group results (and a newer invite) in the shared folder or a picked file. */
+  onCheckUpdates?: () => Promise<void>;
 }
 
 /** A name someone else typed, kept apart from the app's own words and marked as unchecked until codes were compared. */
@@ -139,9 +145,24 @@ function IncomingBanner({ incoming, title }: { incoming: Incoming; title: string
 }
 
 /** A participant's own copy: whose decision it is, how anonymous the ballot is, and whether it went out. */
-function ParticipantBar({ d, onSend, onEdit }: { d: Decision; onSend: () => void; onEdit: (edit: Edit) => void }) {
+function ParticipantBar({ d, onSend, onEdit, onCheckUpdates }: { d: Decision; onSend: () => void; onEdit: (edit: Edit) => void; onCheckUpdates: () => Promise<void> }) {
   const g = d.group!;
   const [checking, setChecking] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const { folder, connect, reload } = useFolder(d.id);
+  // Something to check for: results the organizer puts in the shared folder (when they publish them, or
+  // after each approval), or, once this person uses a folder, a newer invite there. Only from a signed invite.
+  const resultsInFolder = (g.settings.folderResults ?? 'never') !== 'never';
+  const updates = Boolean(g.organizerKey) && (resultsInFolder || (canUseFolders() && folder !== null));
+  const checkUpdates = async () => {
+    setUpdating(true);
+    try {
+      await onCheckUpdates();
+    } finally {
+      setUpdating(false);
+      reload();
+    }
+  };
   const checkCode = g.organizerKey && (
     <button className="link-button small" onClick={() => setChecking(true)}>
       {g.organizerConfirmed ? t('code.title') : t('participant.checkCode')}
@@ -167,7 +188,25 @@ function ParticipantBar({ d, onSend, onEdit }: { d: Decision; onSend: () => void
           )
         )}
         {!ballotSealed(d) && <p className="small warn-text">{t('participant.notSealed')}</p>}
+        {resultsInFolder && g.result && g.resultsAt && (
+          <p className="small muted">{t('participant.resultsFrom', { count: g.result.ballots, date: formatDate(g.resultsAt) })}</p>
+        )}
+        {updates && !canUseFolders() && g.sourceId && <p className="small muted">{t('updates.pickHint', { file: resultsFileName(g.sourceId) })}</p>}
+        {updates && canUseFolders() && folder && (
+          <p className="small muted">
+            {t('folder.connected')} <bdi className="folder-name">{folder.name}</bdi> ·{' '}
+            <button className="link-button small" onClick={() => void connect()}>
+              {t('folder.change')}
+            </button>
+          </p>
+        )}
       </div>
+      {updates && (
+        <button className="button" disabled={updating} onClick={checkUpdates}>
+          <Icon name="refresh" size={18} />
+          {t('updates.check')}
+        </button>
+      )}
       <button className="button primary" onClick={onSend}>
         <Icon name="share" size={18} />
         {t('participant.send')}
@@ -185,7 +224,7 @@ function ParticipantBar({ d, onSend, onEdit }: { d: Decision; onSend: () => void
   );
 }
 
-export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicate, onDelete, onOpenBallots }: Props) {
+export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicate, onDelete, onOpenBallots, onCollectBallots, onCheckUpdates }: Props) {
   const uiLang = useLang();
   const isPhone = useMediaQuery('(max-width: 760px)');
   const readOnly = Boolean(incoming);
@@ -243,7 +282,15 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
   const resultsPanel = <ResultsPanel d={shown} results={results} analysis={analysis} uiLang={uiLang} {...(showGroup && { group: gv.result })} />;
   const ballotsPanel =
     role === 'organizer' && !readOnly ? (
-      <BallotsPanel d={d} voters={groupVoters(d).length} onEdit={onEdit} onInvite={() => setDialog('invite')} onOpenBallots={() => onOpenBallots?.()} />
+      <BallotsPanel
+        d={d}
+        voters={groupVoters(d).length}
+        result={gv?.result ?? null}
+        onEdit={onEdit}
+        onInvite={() => setDialog('invite')}
+        onOpenBallots={() => onOpenBallots?.()}
+        onCollect={() => onCollectBallots?.()}
+      />
     ) : null;
 
   return (
@@ -288,7 +335,9 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
       </header>
 
       {incoming && <IncomingBanner incoming={incoming} title={d.title || t('decision.untitled')} />}
-      {!readOnly && role === 'participant' && <ParticipantBar d={d} onSend={() => setDialog('share')} onEdit={onEdit} />}
+      {!readOnly && role === 'participant' && (
+        <ParticipantBar d={d} onSend={() => setDialog('share')} onEdit={onEdit} onCheckUpdates={async () => onCheckUpdates?.()} />
+      )}
 
       <div className="modebar">
         <span>{modeLine}</span>

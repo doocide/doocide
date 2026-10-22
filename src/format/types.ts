@@ -110,7 +110,14 @@ export interface GroupSettings {
   combine: 'mean' | 'median';
   /** How many people the organizer expects to send ballots. */
   expected?: number;
+  /**
+   * Group results in the shared folder: never (also when absent), when the organizer publishes them,
+   * or after each approval (open scoring only, since blind scoring keeps everyone's scores hidden).
+   */
+  folderResults?: FolderResults;
 }
+
+export type FolderResults = 'never' | 'publish' | 'approval';
 
 export interface Weight {
   factorId: string;
@@ -181,6 +188,14 @@ export interface Group {
   lastInviteAt?: string;
   /** Organizer: a short fingerprint of what the last invite showed, to notice edits people haven't received yet. */
   lastInviteShape?: string;
+  /** Organizer: when results last went to the shared folder. */
+  publishedAt?: string;
+  /**
+   * Organizer: how the results file's passphrase becomes its key. The salt stays the same from one
+   * publish to the next (each gets a fresh IV), so people who entered the passphrase once can open
+   * later files too. A new passphrase makes a new salt.
+   */
+  resultsKdf?: Kdf;
   /** Participant: the organizer's decision id, which the ballot points at. */
   sourceId?: string;
   /** Participant: this person's random id for this decision. */
@@ -200,8 +215,10 @@ export interface Group {
   key?: string;
   /** Participant: the version (the organizer's last-change time) of the invite this copy follows. Older invites are refused. */
   inviteVersion?: string;
-  /** Participant, open scoring: the group's results when the invite was made. */
+  /** Participant: the group's results, from an open invite or the shared folder. */
   result?: GroupResult;
+  /** Participant: the version (the organizer's last-change time) of `result`, so older results never replace newer ones. */
+  resultsAt?: string;
 }
 
 /**
@@ -315,6 +332,12 @@ export interface Envelope {
   kind: DecisionKind;
   enc: 'none';
   data: Decision;
+  /**
+   * Group results files only: the organizer's device key and their signature over the rest, so people
+   * can tell the organizer made the file and nobody changed it. See signEnvelope in src/format/crypto.ts.
+   */
+  key?: string;
+  sig?: string;
 }
 
 export interface InviteEnvelope {

@@ -7,7 +7,7 @@ import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import { cellKey, cellValues, spreadLevel, type Results } from '../engine';
 import type { CellResult, Decision, Fact, Factor, Option, WeightResult } from '../format/types';
 import { formatNumber, t } from '../i18n';
-import { NameField, PughInput, ScoreInput, formatValue, heat } from './controls';
+import { NameField, PughInput, ScoreInput, formatValue, heat, useFocusNew, useHoverTip } from './controls';
 import { addFactor, addOption, renameFactor, renameOption, setRating, setScore, setWeight, tidyNames, type Edit, type Target } from './edit';
 import { ExternalLink } from './ExternalLink';
 import { factorGuide, factorName, optionName } from './labels';
@@ -111,6 +111,10 @@ interface Ctx extends MatrixProps {
   values: Map<string, number>;
   facts: Map<string, Fact>;
   notes: Map<string, number>;
+  /** An option or factor just added: its name field takes focus. */
+  focusId: string | null;
+  addOption: () => void;
+  addFactor: () => void;
 }
 
 /** Rank, trophy and the three summary values of an option. */
@@ -136,6 +140,7 @@ function OptionStrip({ c, o }: { c: Ctx; o: Option }) {
         lang={c.d.lang}
         readOnly={c.fixed}
         label={t('grid.optionName')}
+        autoFocus={c.focusId === o.id}
         onChange={(v) => c.onEdit(renameOption(o.id, v))}
         onBlur={() => c.onEdit(tidyNames)}
       />
@@ -161,6 +166,7 @@ function FactorName({ c, f, children }: { c: Ctx; f: Factor; children?: ReactNod
           lang={c.d.lang}
           readOnly={c.fixed}
           label={t('grid.factorName')}
+          autoFocus={c.focusId === f.id}
           onChange={(v) => c.onEdit(renameFactor(f.id, v))}
           onBlur={() => c.onEdit(tidyNames)}
         />
@@ -248,6 +254,50 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
   );
 }
 
+/** An option's column head (factors as rows). Its description shows the moment the pointer is over it. */
+function OptionHead({ c, o }: { c: Ctx; o: Option }) {
+  const s = optionSummary(c, o);
+  const hover = useHoverTip(o.description, c.d.lang);
+  return (
+    <th scope="col" className={['col-option', s.win ? 'win' : '', s.baseline ? 'baseline' : ''].join(' ')} style={s.style} {...hover.props}>
+      <div className="opt-head">
+        <div className="opt-big" title={s.win ? t('results.winner') : undefined}>
+          {s.rank}
+          {s.win && <Icon name="trophy" size={22} />}
+        </div>
+        <div className="opt-row row-blue">{s.rows[0]}</div>
+        <div className="opt-row row-green">{s.rows[1]}</div>
+        <div className="opt-row row-gold">{s.rows[2]}</div>
+        <OptionStrip c={c} o={o} />
+      </div>
+      {hover.tip}
+    </th>
+  );
+}
+
+/** An option's row head (options as rows), with the same instant description. */
+function OptionRowHead({ c, o }: { c: Ctx; o: Option }) {
+  const s = optionSummary(c, o);
+  const hover = useHoverTip(o.description, c.d.lang);
+  return (
+    <th scope="row" className={['row-option', s.win ? 'win' : '', s.baseline ? 'baseline' : ''].join(' ')} style={s.style} {...hover.props}>
+      <div className="opt-line">
+        <div className="opt-rank" title={s.win ? t('results.winner') : undefined}>
+          {s.rank}
+          {s.win && <Icon name="trophy" size={18} />}
+        </div>
+        <OptionStrip c={c} o={o} />
+      </div>
+      <div className="opt-sums">
+        <span className="opt-row row-blue">{s.rows[0]}</span>
+        <span className="opt-row row-green">{s.rows[1]}</span>
+        <span className="opt-row row-gold">{s.rows[2]}</span>
+      </div>
+      {hover.tip}
+    </th>
+  );
+}
+
 /** Factors as rows, options as columns: the StudentGrader layout. */
 function FactorRows({ c }: { c: Ctx }) {
   const { d } = c;
@@ -261,26 +311,12 @@ function FactorRows({ c }: { c: Ctx }) {
           <th className="col-weight corner" scope="col">
             <div className="head-label">{t('grid.importance')}</div>
           </th>
-          {d.options.map((o) => {
-            const s = optionSummary(c, o);
-            return (
-              <th key={o.id} scope="col" className={['col-option', s.win ? 'win' : '', s.baseline ? 'baseline' : ''].join(' ')} style={s.style}>
-                <div className="opt-head">
-                  <div className="opt-big" title={s.win ? t('results.winner') : undefined}>
-                    {s.rank}
-                    {s.win && <Icon name="trophy" size={22} />}
-                  </div>
-                  <div className="opt-row row-blue">{s.rows[0]}</div>
-                  <div className="opt-row row-green">{s.rows[1]}</div>
-                  <div className="opt-row row-gold">{s.rows[2]}</div>
-                  <OptionStrip c={c} o={o} />
-                </div>
-              </th>
-            );
-          })}
+          {d.options.map((o) => (
+            <OptionHead key={o.id} c={c} o={o} />
+          ))}
           {!c.fixed && (
             <th className="col-add" scope="col">
-              <AddButton label={t('grid.addOption')} onClick={() => c.onEdit(addOption(''))} />
+              <AddButton label={t('grid.addOption')} onClick={c.addOption} />
             </th>
           )}
         </tr>
@@ -303,7 +339,7 @@ function FactorRows({ c }: { c: Ctx }) {
         {!c.fixed && (
           <tr className="add-row">
             <th className="col-factor" scope="row">
-              <AddButton label={t('grid.addFactor')} onClick={() => c.onEdit(addFactor(''))} />
+              <AddButton label={t('grid.addFactor')} onClick={c.addFactor} />
             </th>
             <td colSpan={d.options.length + 2} />
           </tr>
@@ -336,41 +372,25 @@ function OptionRows({ c }: { c: Ctx }) {
           ))}
           {!c.fixed && (
             <th className="col-add" scope="col">
-              <AddButton label={t('grid.addFactor')} onClick={() => c.onEdit(addFactor(''))} />
+              <AddButton label={t('grid.addFactor')} onClick={c.addFactor} />
             </th>
           )}
         </tr>
       </thead>
       <tbody>
-        {d.options.map((o) => {
-          const s = optionSummary(c, o);
-          return (
-            <tr key={o.id}>
-              <th scope="row" className={['row-option', s.win ? 'win' : '', s.baseline ? 'baseline' : ''].join(' ')} style={s.style}>
-                <div className="opt-line">
-                  <div className="opt-rank" title={s.win ? t('results.winner') : undefined}>
-                    {s.rank}
-                    {s.win && <Icon name="trophy" size={18} />}
-                  </div>
-                  <OptionStrip c={c} o={o} />
-                </div>
-                <div className="opt-sums">
-                  <span className="opt-row row-blue">{s.rows[0]}</span>
-                  <span className="opt-row row-green">{s.rows[1]}</span>
-                  <span className="opt-row row-gold">{s.rows[2]}</span>
-                </div>
-              </th>
-              {d.factors.map((f) => (
-                <Cell key={f.id} c={c} o={o} f={f} />
-              ))}
-              {!c.fixed && <td className="col-add" />}
-            </tr>
-          );
-        })}
+        {d.options.map((o) => (
+          <tr key={o.id}>
+            <OptionRowHead c={c} o={o} />
+            {d.factors.map((f) => (
+              <Cell key={f.id} c={c} o={o} f={f} />
+            ))}
+            {!c.fixed && <td className="col-add" />}
+          </tr>
+        ))}
         {!c.fixed && (
           <tr className="add-row">
             <th className="row-option" scope="row">
-              <AddButton label={t('grid.addOption')} onClick={() => c.onEdit(addOption(''))} />
+              <AddButton label={t('grid.addOption')} onClick={c.addOption} />
             </th>
             <td colSpan={d.factors.length + 1} />
           </tr>
@@ -385,6 +405,7 @@ export function Grid(props: MatrixProps) {
   const values = useMemo(() => cellValues(d), [d]);
   const facts = useMemo(() => new Map(d.facts.map((f) => [cellKey(f.optionId, f.factorId), f])), [d.facts]);
   const notes = useMemo(() => noteCounts(d), [d]);
+  const { focusId, nextId } = useFocusNew();
   const c: Ctx = {
     ...props,
     fixed: readOnly || Boolean(lock?.structure),
@@ -393,6 +414,9 @@ export function Grid(props: MatrixProps) {
     values,
     facts,
     notes,
+    focusId,
+    addOption: () => props.onEdit(addOption('', nextId())),
+    addFactor: () => props.onEdit(addFactor('', nextId())),
   };
   return (
     <div className="grid-wrap">

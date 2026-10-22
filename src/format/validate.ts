@@ -16,6 +16,7 @@ import {
   type Decision,
   type DecisionKind,
   type EncryptedEnvelope,
+  type FolderResults,
   type Envelope,
   type Fact,
   type Factor,
@@ -23,6 +24,7 @@ import {
   type GroupResult,
   type GroupSettings,
   type Invite,
+  type Kdf,
   type Note,
   type Option,
   type Score,
@@ -143,7 +145,13 @@ export function validateAnyEnvelope(raw: unknown): AnyEnvelope {
   const kind = get(raw, 'kind');
   const data = get(raw, 'data');
   const base = { doocide: FORMAT_VERSION, enc: 'none' } as const;
-  if (kind === 'decision' || kind === 'template' || kind === 'backup') return { ...base, kind, data: validateDecision(data, kind) };
+  if (kind === 'decision') {
+    // A group results file can carry the organizer's signature. Whether it checks out is decided in src/format/crypto.ts.
+    const key = cleanKey(get(raw, 'key'));
+    const sig = cleanKey(get(raw, 'sig'));
+    return { ...base, kind, data: validateDecision(data, kind), ...(key && { key }), ...(sig && { sig }) };
+  }
+  if (kind === 'template' || kind === 'backup') return { ...base, kind, data: validateDecision(data, kind) };
   if (kind === 'invite') return { ...base, kind, data: validateInvite(data) };
   if (kind === 'ballot') return { ...base, kind, data: validateBallot(data) };
   // A kind this version doesn't know is most likely from a newer Doocide.
@@ -167,24 +175,29 @@ function cleanBox(o: Obj, maxCt: number): { iv: string; ct: string } {
   return { iv, ct };
 }
 
+/** How a passphrase becomes a key, as a file states it. Throws for settings Doocide doesn't use or that would freeze the page. */
+function cleanKdf(k: unknown): Kdf {
+  if (!isObj(k)) throw new FormatError('invalid', 'Missing key settings');
+  if (get(k, 'name') !== 'PBKDF2' || get(k, 'hash') !== 'SHA-256') throw new FormatError('newer-version');
+  const iterations = get(k, 'iterations');
+  if (typeof iterations !== 'number' || !Number.isInteger(iterations)) throw new FormatError('invalid', 'Bad key settings');
+  // A file asking for far more work than Doocide ever uses could freeze the page.
+  if (iterations > ITERATIONS.max) throw new FormatError('too-big', 'Asks for too much work');
+  if (iterations < ITERATIONS.min) throw new FormatError('invalid', 'Key settings too weak');
+  const salt = b64(get(k, 'salt'), 16, 64);
+  if (!salt) throw new FormatError('invalid', 'Bad key settings');
+  return { name: 'PBKDF2', hash: 'SHA-256', iterations, salt };
+}
+
 /** The outside of an encrypted envelope, checked before any decryption is tried. Nothing inside is read here. */
 export function validateEncrypted(raw: Obj): EncryptedEnvelope {
   const enc = get(raw, 'enc');
   const box = cleanBox(raw, LIMITS.fileBytes);
   if (enc === 'passphrase') {
-    const k = get(raw, 'kdf');
-    if (!isObj(k)) throw new FormatError('invalid', 'Missing key settings');
-    if (get(k, 'name') !== 'PBKDF2' || get(k, 'hash') !== 'SHA-256') throw new FormatError('newer-version');
-    const iterations = get(k, 'iterations');
-    if (typeof iterations !== 'number' || !Number.isInteger(iterations)) throw new FormatError('invalid', 'Bad key settings');
-    // A file asking for far more work than Doocide ever uses could freeze the page.
-    if (iterations > ITERATIONS.max) throw new FormatError('too-big', 'Asks for too much work');
-    if (iterations < ITERATIONS.min) throw new FormatError('invalid', 'Key settings too weak');
-    const salt = b64(get(k, 'salt'), 16, 64);
-    if (!salt) throw new FormatError('invalid', 'Bad key settings');
+    const kdf = cleanKdf(get(raw, 'kdf'));
     const w = get(raw, 'wrappedKey');
     const wrappedKey = isObj(w) ? cleanBox(w, 100) : undefined;
-    return { doocide: FORMAT_VERSION, enc, kdf: { name: 'PBKDF2', hash: 'SHA-256', iterations, salt }, ...box, ...(wrappedKey && { wrappedKey }) };
+    return { doocide: FORMAT_VERSION, enc, kdf, ...box, ...(wrappedKey && { wrappedKey }) };
   }
   if (enc === 'sealed') {
     const to = cleanKey(get(raw, 'to'));
@@ -328,16 +341,30 @@ function cleanWeights(raw: unknown, factorIds: Set<string> | null): Weight[] {
   return [...byFactor.values()];
 }
 
+const FOLDER_RESULTS: readonly FolderResults[] = ['never', 'publish', 'approval'];
+
+/**
+ * When group results go to the shared folder. "After each approval" exists only with open scoring:
+ * with blind scoring nobody sees the group's scores until the organizer chooses to publish them.
+ */
+export function cleanFolderResults(v: unknown, scoring: GroupSettings['scoring']): FolderResults | undefined {
+  const value = FOLDER_RESULTS.find((x) => x === v);
+  return value === 'approval' && scoring !== 'open' ? 'publish' : value;
+}
+
 /** Group rules from someone else. When in doubt, anonymous: a ballot without a name is the safe side. */
 export function cleanGroupSettings(v: unknown): GroupSettings {
   const o = isObj(v) ? v : {};
   const expected = intIn(get(o, 'expected'), 1, LIMITS.expected);
+  const scoring = get(o, 'scoring') === 'open' ? 'open' : 'blind';
+  const folderResults = cleanFolderResults(get(o, 'folderResults'), scoring);
   return {
     anonymity: get(o, 'anonymity') === 'named' ? 'named' : 'anonymous',
-    scoring: get(o, 'scoring') === 'open' ? 'open' : 'blind',
+    scoring,
     weights: get(o, 'weights') === 'everyone' ? 'everyone' : 'organizer',
     combine: get(o, 'combine') === 'median' ? 'median' : 'mean',
     ...(expected && { expected }),
+    ...(folderResults && { folderResults }),
   };
 }
 
@@ -519,6 +546,7 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
     const organizerSealKey = cleanKey(get(v, 'organizerSealKey'));
     const key = cleanKey(get(v, 'key'));
     const inviteVersion = get(v, 'inviteVersion') === undefined ? undefined : cleanDate(get(v, 'inviteVersion'), '');
+    const resultsAt = result && get(v, 'resultsAt') !== undefined ? cleanDate(get(v, 'resultsAt'), '') : undefined;
     return {
       role,
       settings,
@@ -538,6 +566,7 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
       ...(inviteVersion && { inviteVersion }),
       ...(key && { key }),
       ...(result && { result }),
+      ...(resultsAt && { resultsAt }),
     };
   }
 
@@ -566,6 +595,13 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
   const lastInviteAt = get(v, 'lastInviteAt') === undefined ? undefined : cleanDate(get(v, 'lastInviteAt'), '');
   const rawShape = get(v, 'lastInviteShape');
   const lastInviteShape = typeof rawShape === 'string' && /^[a-z0-9]{1,16}$/.test(rawShape) ? rawShape : undefined;
+  const publishedAt = get(v, 'publishedAt') === undefined ? undefined : cleanDate(get(v, 'publishedAt'), '');
+  let resultsKdf: Kdf | undefined;
+  try {
+    resultsKdf = get(v, 'resultsKdf') === undefined ? undefined : cleanKdf(get(v, 'resultsKdf'));
+  } catch {
+    // Damaged settings: the lock is off, and the organizer is asked for a passphrase again if they want it.
+  }
   return {
     role,
     settings,
@@ -577,6 +613,8 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
     ...(confirmed.length > 0 && { confirmed }),
     ...(lastInviteAt && { lastInviteAt }),
     ...(lastInviteShape && { lastInviteShape }),
+    ...(publishedAt && { publishedAt }),
+    ...(resultsKdf && { resultsKdf }),
   };
 }
 

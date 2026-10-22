@@ -7,7 +7,7 @@
 // is dropped when the library is locked again. While the lock is on, nothing is ever written in plain.
 
 import { decryptJson, encryptJson, type LockMeta } from '../format/crypto';
-import type { Box, Decision } from '../format/types';
+import type { Box, Decision, Kdf } from '../format/types';
 import { parseJsonText, validateDecision } from '../format/validate';
 
 const DB = 'doocide';
@@ -16,23 +16,24 @@ const STORE = 'decisions';
 const KEYS = 'keys';
 /** The library lock's settings and wrapped data key. */
 const META = 'meta';
+/** Shared folders picked for a decision (see folder.ts). Only the browser's handle to the folder, never decision data. */
+const HANDLES = 'handles';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 const memory = new Map<string, Decision>();
-const memoryKeys = new Map<string, KeyRecord>();
+const memoryKeys = new Map<string, KeyRecord | SecretRecord>();
+const memoryHandles = new Map<string, unknown>();
 let persistent = true;
 let lock: LockMeta | null = null;
 let dataKey: CryptoKey | null = null;
 
 function open(): Promise<IDBDatabase> {
   dbPromise ??= new Promise((resolve, reject) => {
-    // Version 2 added the keys store, version 3 the lock's meta store.
-    const req = indexedDB.open(DB, 3);
+    // Version 2 added the keys store, version 3 the lock's meta store, version 4 the folder handles.
+    const req = indexedDB.open(DB, 4);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
-      if (!db.objectStoreNames.contains(KEYS)) db.createObjectStore(KEYS, { keyPath: 'id' });
-      if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: 'id' });
+      for (const name of [STORE, KEYS, META, HANDLES]) if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -65,7 +66,7 @@ function transaction(names: string[], fn: (store: (name: string) => IDBObjectSto
   );
 }
 
-/** A key kept on this device. `id` is "device", "decision:<decision id>" or "seal:<decision id>". */
+/** A key pair kept on this device. `id` is "device", "decision:<decision id>" or "seal:<decision id>". */
 export interface KeyRecord {
   id: string;
   privateKey: CryptoKey;
@@ -73,37 +74,86 @@ export interface KeyRecord {
   createdAt: string;
 }
 
-export async function getKey(id: string): Promise<KeyRecord | undefined> {
+/**
+ * A secret key kept on this device with the settings that made it: "results:<decision id>", the key
+ * that opens a group's results file. Non-extractable, like every key here.
+ */
+export interface SecretRecord {
+  id: string;
+  secret: CryptoKey;
+  kdf: Kdf;
+  createdAt: string;
+}
+
+async function getRow<T>(name: string, id: string, memoryRows: Map<string, unknown>): Promise<T | undefined> {
   if (persistent) {
     try {
-      const row = await run<KeyRecord | undefined>('readonly', (s) => s.get(id), KEYS);
+      const row = await run<T | undefined>('readonly', (s) => s.get(id), name);
       if (row) return row;
     } catch {
       persistent = false;
     }
   }
-  return memoryKeys.get(id);
+  return memoryRows.get(id) as T | undefined;
 }
 
-export async function putKey(record: KeyRecord): Promise<void> {
-  memoryKeys.set(record.id, record);
+async function putRow<T extends { id: string }>(name: string, row: T, memoryRows: Map<string, unknown>): Promise<void> {
+  memoryRows.set(row.id, row);
   if (!persistent) return;
   try {
-    await run('readwrite', (s) => s.put(record), KEYS);
+    await run('readwrite', (s) => s.put(row), name);
   } catch {
     persistent = false;
   }
 }
 
-export async function deleteKey(id: string): Promise<void> {
-  memoryKeys.delete(id);
+async function deleteRow(name: string, id: string, memoryRows: Map<string, unknown>): Promise<void> {
+  memoryRows.delete(id);
   if (!persistent) return;
   try {
-    await run('readwrite', (s) => s.delete(id), KEYS);
+    await run('readwrite', (s) => s.delete(id), name);
   } catch {
     persistent = false;
   }
 }
+
+const isKeyRecord = (row: unknown): row is KeyRecord => typeof (row as KeyRecord | undefined)?.publicKey === 'string';
+const isSecretRecord = (row: unknown): row is SecretRecord => typeof (row as SecretRecord | undefined)?.kdf === 'object';
+
+export async function getKey(id: string): Promise<KeyRecord | undefined> {
+  const row = await getRow<unknown>(KEYS, id, memoryKeys);
+  return isKeyRecord(row) ? row : undefined;
+}
+
+export const putKey = (record: KeyRecord): Promise<void> => putRow(KEYS, record, memoryKeys);
+
+export async function getSecret(id: string): Promise<SecretRecord | undefined> {
+  const row = await getRow<unknown>(KEYS, id, memoryKeys);
+  return isSecretRecord(row) ? row : undefined;
+}
+
+export const putSecret = (record: SecretRecord): Promise<void> => putRow(KEYS, record, memoryKeys);
+
+export const deleteKey = (id: string): Promise<void> => deleteRow(KEYS, id, memoryKeys);
+
+/** The shared folder picked for a decision, as the browser handed it over. folder.ts knows what's inside. */
+export async function getHandle(decisionId: string): Promise<unknown> {
+  return (await getRow<{ handle: unknown }>(HANDLES, decisionId, memoryHandles))?.handle;
+}
+
+/** Kept for this visit only when the browser can't store it: that says nothing about whether decisions can be saved. */
+export async function putHandle(decisionId: string, handle: unknown): Promise<void> {
+  const row = { id: decisionId, handle };
+  memoryHandles.set(decisionId, row);
+  if (!persistent) return;
+  try {
+    await run('readwrite', (s) => s.put(row), HANDLES);
+  } catch {
+    // Not every browser can store a folder handle; the folder is asked for again next time.
+  }
+}
+
+export const deleteHandle = (decisionId: string): Promise<void> => deleteRow(HANDLES, decisionId, memoryHandles);
 
 export const isPersistent = () => persistent;
 
@@ -232,13 +282,15 @@ export async function turnLockOff(): Promise<void> {
 
 /** For a forgotten passphrase: deletes every decision, the lock and every key in this browser. It can't be undone. */
 export async function eraseEverything(): Promise<void> {
-  await transaction([STORE, META, KEYS], (store) => {
+  await transaction([STORE, META, KEYS, HANDLES], (store) => {
     store(STORE).clear();
     store(META).clear();
     store(KEYS).clear();
+    store(HANDLES).clear();
   });
   memory.clear();
   memoryKeys.clear();
+  memoryHandles.clear();
   lock = null;
   dataKey = null;
 }

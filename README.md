@@ -52,6 +52,8 @@ Every tough choice has the same shape: a few options, a few things that matter, 
 - 🏆 **It tells you how solid the winner is.** Clear winner, close call or coin flip, plus the one change that would flip it: *"Seaside town wins if it scores 9 instead of 6 on “Cost”."*
 - 🔒 **Your decisions stay on your device.** No server, no account, no analytics. Private notes stay private, even when you share.
 - 🔗 **Share without a server.** A link carries the whole decision after the `#`, the part browsers never send to a server. Drop it in any chat.
+- 👥 **Decide together, still without a server.** Invite people by link, file or a shared cloud folder. Ballots come back signed and sealed so only your browser can open them, anonymous or named, scored blind or in the open. You approve each one, then see the group's result and where it disagrees.
+- 🗂️ **A shared folder does the collecting.** Put the invite in a cloud folder your group already shares. People save their sealed ballots there, you collect them with one click, and they can check for the group's results, locked with a passphrase if you like.
 - ⚖️ **Two ways to score.** Weighted scores, or the classic Pugh Matrix: pick a baseline and mark every other option better, same or worse.
 - 📝 **Facts and notes.** Every score can carry its evidence and a source link, so the reasoning travels with the result.
 - 📋 **Bring your spreadsheet.** Paste a table to start a decision, export to CSV when you're done.
@@ -64,6 +66,14 @@ Every tough choice has the same shape: a few options, a few things that matter, 
     <img src="docs/assets/phone-light.jpg" width="300" alt="Doocide on a phone: one factor at a time, every option on a slider.">
   </picture>
   <br><sub>On a phone: one factor at a time, every option on a slider.</sub>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/group-dark.jpg">
+    <img src="docs/assets/group-light.jpg" width="800" alt="Deciding together: five anonymous ballots combined. Each cell shows the group's score and its range, and a list shows where the group disagrees most, led by City break on Fun for the kids, scored from 2 to 9.">
+  </picture>
+  <br><sub>Deciding together: every score with the group's range, and where the group disagrees.</sub>
 </p>
 
 ## Start from a template
@@ -87,7 +97,7 @@ Doocide is built in the open, and there's room for you:
 
 - 🌍 **Translate it.** Each language is one file. The goal is 35+ languages, and the tests tell you what's missing.
 - 🧩 **Add a template.** Templates are public domain. If you decide something often, someone else does too.
-- 🛠️ **Build what's next.** Deciding together is the next milestone, see the roadmap below.
+- 🛠️ **Build what's next.** Reach is the next milestone: help from your own AI assistant, public decisions and in-room mode. See the roadmap below.
 - 🐞 **Break it.** Bugs go in Issues. Anything about privacy or security goes to the Security tab, privately.
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md). It's short.
@@ -95,7 +105,7 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md). It's short.
 ## Roadmap
 
 - [x] **Decide alone, share a link:** weighted and Pugh scoring, how solid the winner is, facts and notes, share links and files, templates, paste a table, offline file, English and Romanian.
-- [ ] **Decide together:** group ballots, blind scoring, a map of where the group disagrees, anonymous or signed ballots, and passphrase locks for shared decisions and your own library.
+- [x] **Decide together:** group ballots by link, file or a shared cloud folder, blind or open scoring, a map of where the group disagrees, anonymous or named ballots that are signed and sealed, group results participants can check for, and passphrase locks for shared decisions, group results and your own library.
 - [ ] **Reach:** help from your own AI assistant, public decisions, in-room mode with QR codes, a decision journal, 35+ languages.
 
 ## The story
@@ -116,6 +126,11 @@ It's time to doocide. 🙌
 - The page loads nothing from other sites: no analytics, no fonts, no scripts. A strict security policy blocks anything else, even if there were a bug.
 - Private notes never leave your device. Every share goes through one code path that leaves them out, and tests fail the build if they ever slip through.
 - Links and files from other people open as a read-only preview, checked and size-limited, before you choose to save them.
+- Group ballots are signed and sealed: only the organizer's device can open them, and anonymous ballots carry no name and no key that links them to you.
+- A shared folder is read or written only when you tap a button. Doocide never watches it, and only invites, sealed ballots and signed results go in.
+- Passphrases are never stored, and every lock uses the browser's own cryptography.
+
+[SECURITY.md](SECURITY.md) lists every guarantee, and what Doocide can't promise.
 
 See [CLAUDE.md](CLAUDE.md) for the full list of rules the code never breaks.
 
@@ -124,6 +139,8 @@ See [CLAUDE.md](CLAUDE.md) for the full list of rules the code never breaks.
 Current Chrome, Edge, Firefox and Safari, on desktop and mobile. The oldest versions with every feature Doocide needs (link compression, `color-mix()` colors, modal dialogs): Chrome and Edge 111, Firefox 113, Safari 16.4.
 
 Tested so far in Chrome (Chromium) and Safari. Firefox and Edge use the same features but haven't been checked by hand yet.
+
+Shared folders: Chrome and Edge on desktop write straight into the folder and remember it. Other browsers, and phones, save the file for you to move into the folder, and you pick the folder or the file to read it back.
 
 ## Run it locally
 

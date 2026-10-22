@@ -3,20 +3,23 @@ import { loadTemplateText } from '@packs';
 import { appBase, decodeIncoming, readFragment } from '../format/codec';
 import { adopt, emptyDecision, joinInvite } from '../format/create';
 import { checkBallot, checkInvite, createLock, openLock, openSealed, openWithPassphrase } from '../format/crypto';
-import type { AnyEnvelope, Ballot, Decision, Envelope, Invite, InviteEnvelope, PassphraseEnvelope, ReceivedBallot } from '../format/types';
+import type { AnyEnvelope, Decision, Envelope, Invite, InviteEnvelope, PassphraseEnvelope, ReceivedBallot } from '../format/types';
 import { FormatError, parseAnyEnvelopeText, parseEnvelopeText, parseIncomingText, type FormatErrorCode, type Incoming } from '../format/validate';
 import { getLang, t, useLang } from '../i18n';
 import { BallotReview } from './BallotReview';
 import { DecisionView } from './DecisionView';
-import { addBallots, refreshFromInvite, type Edit } from './edit';
+import { addBallots, applyFolderResults, isNewerResult, refreshFromInvite, type Edit } from './edit';
 import { FILE_EXTENSION, pickFileText, pickFilesText } from './files';
+import { canUseFolders, connectFolder, forgetFolder, inviteFileName, pickFolderBallots, readBallots, readNamed, rememberedFolder, resultsFileName } from './folder';
+import { ballotsFromTexts, findOrganizer, readUpdate, unlockUpdate, type Update } from './groupFiles';
 import { ImportDialog } from './ImportDialog';
 import { TemplatesDialog } from './InfoDialogs';
 import { hasChanges, inviteChanges, isOlderInvite } from './invites';
 import { findSealer, forgetDecisionKey } from './keys';
 import { decisionTitle } from './labels';
 import { Library } from './Library';
-import { LockDialog, LockScreen, PassphrasePrompt } from './Lock';
+import { LockDialog, LockScreen, PassphraseDialog, PassphrasePrompt } from './Lock';
+import { afterApproval } from './SharedFolder';
 import { downloadBackup } from './backup';
 import { forgetAllBackups, forgetBackup, getBackups } from './prefs';
 import {
@@ -51,15 +54,6 @@ type View =
 
 const errorCode = (e: unknown): FormatErrorCode => (e instanceof FormatError ? e.code : 'bad-data');
 
-/** The organizer's decision a ballot belongs to. A restored backup has a new id, so the invite id is checked too. */
-function findOrganizer(all: Iterable<Decision>, b: Ballot): Decision | undefined {
-  const organizers = [...all].filter((d) => d.group?.role === 'organizer');
-  return (
-    organizers.find((d) => d.id === b.decisionId) ??
-    organizers.filter((d) => d.group!.inviteId === b.inviteId).sort((x, y) => y.updatedAt.localeCompare(x.updatedAt))[0]
-  );
-}
-
 /** This person's copy of an invite they already started. */
 const findJoined = (all: Iterable<Decision>, inv: Invite) =>
   [...all].find((d) => d.group?.role === 'participant' && d.group.sourceId === inv.decision.id && d.group.inviteId === inv.inviteId);
@@ -78,6 +72,8 @@ export function App() {
   const [dialog, setDialog] = useState<null | 'templates' | 'import' | 'lock'>(null);
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const [backups, setBackups] = useState(getBackups);
+  /** A participant's results file is locked, and this device doesn't have its key yet. */
+  const [unlocking, setUnlocking] = useState<{ id: string; box: PassphraseEnvelope } | null>(null);
   const pending = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   const commit = useCallback((next: Map<string, Decision>) => {
@@ -279,16 +275,18 @@ export function App() {
     [commit, go],
   );
 
+  /** Applies an edit and returns the decision as it is now. */
   const edit = useCallback(
-    (id: string, change: Edit) => {
+    (id: string, change: Edit): Decision | undefined => {
       const current = decisionsRef.current.get(id);
-      if (!current) return;
+      if (!current) return undefined;
       const updated = change(current);
-      if (updated === current) return;
+      if (updated === current) return current;
       const next = new Map(decisionsRef.current);
       next.set(id, updated);
       commit(next);
       persist(updated);
+      return updated;
     },
     [commit, persist],
   );
@@ -305,6 +303,7 @@ export function App() {
       commit(next);
       await deleteDecision(id);
       await forgetDecisionKey(id);
+      await forgetFolder(id);
       forgetBackup(id);
       setBackups(getBackups());
       go({ name: 'library' }, true);
@@ -325,25 +324,89 @@ export function App() {
   const openBallots = async (d: Decision) => {
     const picked = await pickFilesText(`${FILE_EXTENSION},.json,application/json`);
     if (!picked) return;
-    const ballots: ReceivedBallot[] = [];
-    let skipped = picked.failed;
-    for (const text of picked.texts) {
-      try {
-        const incoming = parseIncomingText(text);
-        let env: AnyEnvelope | null = incoming.type === 'plain' ? incoming.env : null;
-        // A sealed ballot opens only with this decision's sealing key.
-        if (incoming.type === 'encrypted' && incoming.box.enc === 'sealed') {
-          const found = await findSealer(incoming.box.to, [d.id]);
-          if (found) env = parseAnyEnvelopeText(await openSealed(incoming.box, found.sealer));
-        }
-        if (env?.kind === 'ballot' && findOrganizer([d], env.data)) ballots.push({ ballot: env.data, signature: await checkBallot(env.data) });
-        else skipped++;
-      } catch {
-        skipped++;
-      }
-    }
+    const { ballots, skipped } = await ballotsFromTexts(d, picked.texts);
     if (ballots.length === 0) return toast(t('review.noneFound'));
-    go({ name: 'review', decisionId: d.id, ballots, skipped });
+    go({ name: 'review', decisionId: d.id, ballots, skipped: skipped + picked.failed });
+  };
+
+  /** The organizer checks the shared folder (or, without folder access, picks it): only ballots that bring something new go to review. */
+  const collectBallots = async (d: Decision) => {
+    try {
+      const folder = canUseFolders() ? await rememberedFolder(d.id) : null;
+      const read = folder ? await readBallots(folder) : await pickFolderBallots();
+      if (!read) return;
+      if (read === 'denied') return toast(t('folder.denied'));
+      const { ballots, skipped, known } = await ballotsFromTexts(d, read.texts, true);
+      if (ballots.length === 0) return toast(known ? t('folder.noNew', { count: known }) : t('folder.noBallots'));
+      go({ name: 'review', decisionId: d.id, ballots, skipped: skipped + read.failed });
+    } catch {
+      toast(t('folder.failed'));
+    }
+  };
+
+  /** Participant: what one file brings their copy. Returns a line to show, or null when it opened a screen or dialog. */
+  const applyUpdate = async (id: string, update: Update): Promise<string | null> => {
+    const d = decisionsRef.current.get(id);
+    const g = d?.group;
+    if (!d || g?.role !== 'participant') return null;
+    switch (update.type) {
+      case 'results':
+        if (!isNewerResult(d, update.at)) return t('updates.none');
+        edit(id, applyFolderResults(update.result, update.at));
+        return t('updates.results', { count: update.result.ballots });
+      case 'invite':
+        // A newer invite opens on the usual screen, which lists what changed. The same or an older one needs nothing.
+        if (g.inviteVersion && update.env.data.decision.updatedAt <= g.inviteVersion) return t('updates.upToDate');
+        go(await viewFor(update.env));
+        return null;
+      case 'locked':
+        setUnlocking({ id, box: update.box });
+        return null;
+      case 'refused':
+        return t(`updates.refused.${update.reason}`);
+    }
+  };
+
+  /**
+   * Participant: "Check for updates". From the shared folder where this browser can use one (picked
+   * once, then remembered): the group's results and the invite. Elsewhere, the person picks the file.
+   */
+  const checkUpdates = async (id: string) => {
+    const d = decisionsRef.current.get(id);
+    const g = d?.group;
+    if (!d || g?.role !== 'participant' || !g.sourceId) return;
+    try {
+      let texts: string[];
+      if (canUseFolders()) {
+        const folder = (await rememberedFolder(id)) ?? (await connectFolder(id));
+        if (!folder) return;
+        const results = await readNamed(folder, resultsFileName(g.sourceId));
+        if (results === 'denied') return toast(t('folder.denied'));
+        const invite = await readNamed(folder, inviteFileName(g.sourceId));
+        texts = [results, invite].filter((x): x is string => typeof x === 'string' && x !== 'denied');
+        if (results === null) {
+          // No results (yet, or the organizer keeps them): a newer invite may still be there.
+          const resultsInFolder = (g.settings.folderResults ?? 'never') !== 'never';
+          if (!texts.length) return toast(resultsInFolder ? t('updates.noFile') : t('updates.nothing'));
+          const said = await applyUpdate(id, await readUpdate(d, texts[0]!));
+          if (said) toast(resultsInFolder ? t('updates.noFile') : said);
+          return;
+        }
+      } else {
+        const text = await pickFileText(`${FILE_EXTENSION},.json,application/json`);
+        if (text === null) return;
+        texts = [text];
+      }
+      // Results first, then the invite: a newer invite opens its own screen.
+      let line: string | null = null;
+      for (const text of texts) {
+        const said = await applyUpdate(id, await readUpdate(d, text));
+        line ??= said;
+      }
+      if (line) toast(line);
+    } catch {
+      toast(t('updates.failed'));
+    }
   };
 
   const pickTemplate = async (name: string) => {
@@ -401,9 +464,10 @@ export function App() {
           ballots={view.ballots}
           skipped={view.skipped}
           onApprove={(chosen) => {
-            edit(d.id, addBallots(chosen));
+            const updated = edit(d.id, addBallots(chosen));
             toast(t('review.added', { count: chosen.length }));
             go({ name: 'decision', id: d.id }, true);
+            if (updated) void afterApproval(updated, (change) => edit(d.id, change), toast);
           }}
           onDiscard={() => go({ name: 'decision', id: d.id }, true)}
         />
@@ -480,7 +544,22 @@ export function App() {
 
   const current = view.name === 'decision' ? decisions.get(view.id) : undefined;
   if (current) {
+    const unlockingHere = unlocking?.id === current.id ? unlocking : null;
     return (
+      <>
+      {unlockingHere && (
+        <PassphraseDialog
+          title={t('updates.lockedTitle')}
+          text={t('updates.lockedText')}
+          onClose={() => setUnlocking(null)}
+          onSubmit={async (passphrase) => {
+            const update = await unlockUpdate(current, unlockingHere.box, passphrase);
+            setUnlocking(null);
+            const line = await applyUpdate(current.id, update);
+            if (line) toast(line);
+          }}
+        />
+      )}
       <DecisionView
         d={current}
         onEdit={(change) => edit(current.id, change)}
@@ -489,7 +568,10 @@ export function App() {
         onDuplicate={() => add({ ...adopt(current, getLang()), title: t('decision.copyOf', { title: decisionTitle(current) }) })}
         onDelete={() => remove(current.id)}
         onOpenBallots={() => openBallots(current)}
+        onCollectBallots={() => collectBallots(current)}
+        onCheckUpdates={() => checkUpdates(current.id)}
       />
+      </>
     );
   }
 

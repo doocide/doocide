@@ -3,14 +3,13 @@
 
 import { useEffect, useState } from 'react';
 import { makeEncryptedLink, makeLink } from '../format/codec';
-import { lockWithPassphrase, sealTo, signBallot, signInvite } from '../format/crypto';
+import { lockWithPassphrase, sealTo, signBallot } from '../format/crypto';
 import { newId } from '../format/ids';
 import { LIMITS } from '../format/limits';
 import {
   assertShareable,
   ballotEnvelope,
   ballotSummary,
-  inviteEnvelope,
   inviteSummary,
   resultsEnvelope,
   resultsSummary,
@@ -24,8 +23,11 @@ import { useDeviceKey, useShortCode } from './codes';
 import { ballotSealed, checkOrganizerFirst, confirmOrganizer, markInvited, markSent, restartVoter, setMyName, type Edit } from './edit';
 import { inviteShape } from './invites';
 import { FILE_EXTENSION, canShareNatively, copyText, downloadText, safeFileName, shareNatively } from './files';
-import { ballotKey, deviceKey, sealingKey } from './keys';
+import { canUseFolders, saveToFolder } from './folder';
+import { signedInvite } from './groupFiles';
+import { ballotKey } from './keys';
 import { decisionTitle } from './labels';
+import { useFolder } from './SharedFolder';
 import { Dialog, Icon, Segmented, useToast } from './ui';
 
 /** Some chat apps cut links around this length. */
@@ -148,6 +150,10 @@ function PassphraseOption({ on, value, onToggle, onChange }: { on: boolean; valu
 /** A participant sends their ballot back to the organizer. */
 function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) {
   const g = d.group!;
+  const toast = useToast();
+  const folders = canUseFolders();
+  const { folder, connect } = useFolder(d.id);
+  const [busy, setBusy] = useState(false);
   const named = g.settings.anonymity === 'named';
   const [name, setName] = useState(g.myName ?? '');
   const [link, setLink] = useState<string | null>(null);
@@ -175,15 +181,41 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
 
   // Each send counts up the revision, so the organizer's app keeps the newest ballot from this person.
   // The ballot is checked, signed, and then sealed so only the organizer can open it.
-  const send = async (): Promise<Outgoing> => {
+  const prepare = async (): Promise<{ next: Decision; signed: BallotEnvelope }> => {
     const signer = await ballotKey(d);
     const base = g.key && g.key !== signer.publicKey ? restartVoter(withName) : withName;
     const next = markSent({ ...base, group: { ...base.group!, key: signer.publicKey } });
-    onEdit(() => next);
     const env = ballotEnvelope(next);
     const signed: BallotEnvelope = { ...env, data: await signBallot(env.data, signer) };
     assertShareable(signed);
+    return { next, signed };
+  };
+
+  const send = async (): Promise<Outgoing> => {
+    const { next, signed } = await prepare();
+    onEdit(() => next);
     return g.organizerSealKey ? sealTo(g.organizerSealKey, JSON.stringify(signed)) : signed;
+  };
+
+  /** Into the group's shared folder, sealed: everyone with access to the folder sees the file, nobody but the organizer what's in it. */
+  const saveShared = async () => {
+    const sealKey = g.organizerSealKey;
+    if (!sealKey) return;
+    setBusy(true);
+    try {
+      const target = folder ?? (await connect());
+      if (!target) return;
+      const { next, signed } = await prepare();
+      const saved = await saveToFolder(target, { kind: 'ballot', env: signed, seal: (json) => sealTo(sealKey, json) });
+      if (saved !== 'written') return toast(t('folder.denied'));
+      onEdit(() => next);
+      toast(t('folder.ballotWritten', { folder: target.name }));
+      onClose();
+    } catch {
+      toast(t('folder.failed'));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const included = [
@@ -238,7 +270,7 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
       )}
       {!link ? (
         <Actions
-          disabled={missingName || !signingKey || mustCheck}
+          disabled={busy || missingName || !signingKey || mustCheck}
           onFile={async () => saveOutgoing(await send(), `ballot-${newId(6)}`)}
           onLink={async () => setLink(await linkFor(await send()))}
         />
@@ -246,6 +278,32 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
         <LinkBox link={link} title={decisionTitle(d)} />
       )}
       {missingName && <p className="muted small">{t('participant.nameNeeded')}</p>}
+      {!link && (
+        <section className="folder-save" aria-labelledby="folder-save-title">
+          <h3 id="folder-save-title">
+            <Icon name="folder" size={16} /> {t('folder.ballotTitle')}
+          </h3>
+          {!sealed ? (
+            <p className="muted small">{t('folder.ballotNotSealed')}</p>
+          ) : folders ? (
+            <>
+              <div className="actions start">
+                <button className="button" disabled={busy || missingName || !signingKey || mustCheck} onClick={saveShared}>
+                  <Icon name="folder" size={18} />
+                  {t('folder.saveBallot')}
+                </button>
+              </div>
+              <p className="muted small">
+                {folder ? t('folder.ballotInto', { folder: folder.name }) : t('folder.ballotPick')} {!named && t('folder.anonymousSeen')}
+              </p>
+            </>
+          ) : (
+            <p className="muted small">
+              {t('folder.ballotManual')} {!named && t('folder.anonymousSeen')}
+            </p>
+          )}
+        </section>
+      )}
     </Dialog>
   );
 }
@@ -268,11 +326,8 @@ function OwnerShare({ d, result, initial, onEdit, onClose }: Props) {
   const myCode = useShortCode(myKey);
 
   const envelope = async (): Promise<AnyEnvelope> => {
-    if (kind === 'invite') {
-      // The sealing key rides in the invite, under its signature, so ballots come back sealed to it.
-      const env = inviteEnvelope(d, result ?? undefined, (await sealingKey(d.id)).publicKey);
-      return { ...env, data: await signInvite(env.data, await deviceKey()) };
-    }
+    // The sealing key rides in the invite, under its signature, so ballots come back sealed to it.
+    if (kind === 'invite') return signedInvite(d, result ?? undefined);
     return kind === 'results' && result ? resultsEnvelope(d, result) : shareEnvelope(d, kind === 'template' ? 'template' : 'decision');
   };
 

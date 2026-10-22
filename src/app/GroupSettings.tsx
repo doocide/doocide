@@ -1,10 +1,13 @@
 // "Score this with others": starting a group, its rules, and (for participants) the rules they joined under.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { keyFromPassphrase, newKdf } from '../format/crypto';
 import { LIMITS } from '../format/limits';
-import type { Anonymity, Decision, GroupSettings } from '../format/types';
+import type { Anonymity, Decision, FolderResults, GroupSettings } from '../format/types';
 import { t } from '../i18n';
-import { endGroup, setGroupSettings, setMyName, startGroup, type Edit } from './edit';
+import { defaultFolderResults, endGroup, setGroupSettings, setMyName, setResultsLock, startGroup, type Edit } from './edit';
+import { forgetResultsKey, keepResultsKey, resultsKey } from './keys';
+import { passphraseStrength } from './ShareDialog';
 import { Icon, Segmented, useConfirm } from './ui';
 
 /** Anonymous or named: shown side by side, with nothing picked until the organizer picks. */
@@ -80,6 +83,21 @@ function RuleFields({ rules, onChange }: { rules: Rules; onChange: (patch: Parti
         />
         <span className="muted small">{rules.combine === 'mean' ? t('group.meanHelp') : t('group.medianHelp')}</span>
       </div>
+      <div className="field">
+        <span className="field-label">{t('group.folderResults')}</span>
+        <Segmented<FolderResults>
+          value={rules.folderResults ?? 'never'}
+          label={t('group.folderResults')}
+          onChange={(folderResults) => onChange({ folderResults })}
+          options={[
+            { value: 'never', label: t('group.folderNever') },
+            { value: 'publish', label: t('group.folderPublish') },
+            // With blind scoring, nobody sees the group's scores until the organizer chooses to publish them.
+            ...(rules.scoring === 'open' ? [{ value: 'approval' as const, label: t('group.folderApproval') }] : []),
+          ]}
+        />
+        <span className="muted small">{t(`group.folderHelp.${rules.folderResults ?? 'never'}`)}</span>
+      </div>
       <label className="field">
         <span className="field-label">{t('group.expected')}</span>
         <input
@@ -110,7 +128,14 @@ function NameField({ value, help, onChange, onBlur }: { value: string; help: str
 function Setup({ onEdit }: { onEdit: (e: Edit) => void }) {
   const [open, setOpen] = useState(false);
   const [anonymity, setAnonymity] = useState<Anonymity | null>(null);
-  const [rules, setRules] = useState<Rules>({ scoring: 'blind', weights: 'organizer', combine: 'mean' });
+  const [rules, setRules] = useState<Rules>({ scoring: 'blind', weights: 'organizer', combine: 'mean', folderResults: defaultFolderResults('blind') });
+  // Switching blind or open while setting up moves the folder choice to that mode's default, unless it's "never".
+  const changeRules = (patch: Partial<Rules>) =>
+    setRules((r) => {
+      const next = { ...r, ...patch };
+      if (patch.scoring && !patch.folderResults && next.folderResults !== 'never') next.folderResults = defaultFolderResults(patch.scoring);
+      return next;
+    });
   const [name, setName] = useState('');
 
   if (!open) {
@@ -129,7 +154,7 @@ function Setup({ onEdit }: { onEdit: (e: Edit) => void }) {
       <p className="muted small">{t('group.intro')}</p>
       <AnonymityChoice value={anonymity} locked={false} onChange={setAnonymity} />
       {anonymity === 'named' && <NameField value={name} help={t('group.yourNameHelp')} onChange={setName} />}
-      <RuleFields rules={rules} onChange={(patch) => setRules({ ...rules, ...patch })} />
+      <RuleFields rules={rules} onChange={changeRules} />
       <div className="actions">
         <button className="button" onClick={() => setOpen(false)}>
           {t('common.cancel')}
@@ -152,6 +177,7 @@ function OrganizerRules({ d, onEdit }: { d: Decision; onEdit: (e: Edit) => void 
       <AnonymityChoice value={g.settings.anonymity} locked={g.anonymityLocked} onChange={(anonymity) => onEdit(setGroupSettings({ anonymity }))} />
       {g.settings.anonymity === 'named' && <NameField value={name} help={t('group.yourNameHelp')} onChange={setName} onBlur={() => onEdit(setMyName(name))} />}
       <RuleFields rules={g.settings} onChange={(patch) => onEdit(setGroupSettings(patch))} />
+      {(g.settings.folderResults ?? 'never') !== 'never' && <ResultsLock d={d} onEdit={onEdit} />}
       {!g.anonymityLocked && (
         <button
           className="link-button small danger"
@@ -167,6 +193,83 @@ function OrganizerRules({ d, onEdit }: { d: Decision; onEdit: (e: Edit) => void 
   );
 }
 
+/**
+ * Organizer: lock the results file in the shared folder with a passphrase. Only the key it makes is kept
+ * on this device (non-extractable), never the passphrase; people enter it once on theirs.
+ */
+function ResultsLock({ d, onEdit }: { d: Decision; onEdit: (e: Edit) => void }) {
+  const kdf = d.group?.resultsKdf;
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [hasKey, setHasKey] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    if (kdf) resultsKey(d.id, kdf).then((k) => live && setHasKey(k !== null), () => live && setHasKey(false));
+    return () => {
+      live = false;
+    };
+  }, [d.id, kdf]);
+  const strength = passphraseStrength(value);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      // A new passphrase always gets new settings, so nobody's old key opens files made with it.
+      const next = newKdf();
+      await keepResultsKey(d.id, await keyFromPassphrase(value, next), next);
+      onEdit(setResultsLock(next));
+      setEditing(false);
+      setValue('');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const turnOff = async () => {
+    await forgetResultsKey(d.id);
+    onEdit(setResultsLock(null));
+  };
+
+  return (
+    <div className="field">
+      <label className="check">
+        <input type="checkbox" checked={Boolean(kdf) || editing} onChange={(e) => (e.target.checked ? setEditing(true) : kdf ? void turnOff() : setEditing(false))} />
+        {t('group.resultsLock')}
+      </label>
+      {kdf && !editing && (
+        <>
+          <span className="muted small">{t('group.resultsLockOn')}</span>
+          {hasKey === false && <span className="callout warn small">{t('group.resultsLockLost')}</span>}
+          <button className="link-button small" onClick={() => setEditing(true)}>
+            {t('group.resultsLockChange')}
+          </button>
+        </>
+      )}
+      {editing && (
+        <>
+          <input value={value} autoComplete="off" spellCheck={false} aria-label={t('share.passphrase')} placeholder={t('share.passphrase')} onChange={(e) => setValue(e.target.value)} />
+          <span className={strength === 'short' ? 'muted small warn-text' : 'muted small'}>{t(`share.strength.${strength}`)}</span>
+          <span className="muted small">{t('group.resultsLockApart')}</span>
+          <div className="actions start">
+            <button
+              className="button"
+              onClick={() => {
+                setEditing(false);
+                setValue('');
+              }}
+            >
+              {t('common.cancel')}
+            </button>
+            <button className="button primary" disabled={busy || strength === 'short'} onClick={save}>
+              {t('group.resultsLockSet')}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ParticipantRules({ d, onEdit }: { d: Decision; onEdit: (e: Edit) => void }) {
   const g = d.group!;
   const s = g.settings;
@@ -178,6 +281,7 @@ function ParticipantRules({ d, onEdit }: { d: Decision; onEdit: (e: Edit) => voi
         <li>{s.scoring === 'blind' ? t('group.blindHelp') : t('group.openHelp')}</li>
         <li>{s.weights === 'organizer' ? t('group.importanceOrganizerHelp') : t('group.importanceEveryoneHelp')}</li>
         <li>{s.combine === 'mean' ? t('group.meanHelp') : t('group.medianHelp')}</li>
+        {(s.folderResults ?? 'never') !== 'never' && <li>{t(`group.folderPromise.${s.folderResults}`)}</li>}
       </ul>
       {s.anonymity === 'named' && <NameField value={name} help={t('participant.nameHelp')} onChange={setName} onBlur={() => onEdit(setMyName(name))} />}
     </>

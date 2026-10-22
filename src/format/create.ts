@@ -62,7 +62,7 @@ export function joinInvite(invite: Invite, lang: string, signed = false): Decisi
       ...(signed && invite.key && { organizerKey: invite.key }),
       // Only a signed invite's sealing key is trusted: otherwise anyone could swap in their own.
       ...(signed && invite.sealKey && { organizerSealKey: invite.sealKey }),
-      ...(invite.result && { result: invite.result }),
+      ...(invite.result && { result: invite.result, resultsAt: d.updatedAt }),
     },
   };
 }

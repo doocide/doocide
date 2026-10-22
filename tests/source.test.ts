@@ -56,6 +56,14 @@ describe('source rules', () => {
     for (const path of ['src/app/store.ts', 'src/app/prefs.ts']) expect(codeOf(path), path).not.toMatch(/passphrase/i);
   });
 
+  it('touches folders and file handles in one place only', () => {
+    expect(filesMatching(/showDirectoryPicker|FileSystem\w*Handle|webkitdirectory|getFileHandle|createWritable/)).toEqual(['src/app/folder.ts']);
+  });
+
+  it('never watches or polls a shared folder: every read and write starts with a tap', () => {
+    expect(codeOf('src/app/folder.ts')).not.toMatch(/setInterval|setTimeout|FileSystemObserver|requestIdleCallback/);
+  });
+
   it('keeps localStorage for preferences only', () => {
     expect(filesMatching(/localStorage|sessionStorage/)).toEqual(['src/app/prefs.ts']);
   });

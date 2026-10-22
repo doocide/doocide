@@ -5,9 +5,9 @@ import { newId } from '../format/ids';
 import { LIMITS } from '../format/limits';
 import { checkLink, cleanText } from '../format/sanitize';
 import { signatureAllows } from '../engine/ballots';
-import type { Decision, GroupSettings, Invite, Note, ReceivedBallot, Score, Settings, StoredBallot, Visibility } from '../format/types';
+import type { Decision, GroupResult, GroupSettings, Invite, Kdf, Note, ReceivedBallot, Score, Settings, StoredBallot, Visibility } from '../format/types';
 import { WEIGHT_MAX, WEIGHT_MIN } from '../format/types';
-import { matchBallot } from '../format/validate';
+import { cleanFolderResults, matchBallot } from '../format/validate';
 
 export type Edit = (d: Decision) => Decision;
 
@@ -97,8 +97,9 @@ export const setRows = (rows: 'factors' | 'options'): Edit => (d) => {
 
 // Options
 
-export const addOption = (name: string): Edit =>
-  structural((d) => (d.options.length >= LIMITS.options ? d : touch({ ...d, options: [...d.options, { id: newId(), name: tidy(name) }] })));
+/** `id`: chosen by the caller when the screen needs to know it (to focus the new name field). */
+export const addOption = (name: string, id: string = newId()): Edit =>
+  structural((d) => (d.options.length >= LIMITS.options || d.options.some((o) => o.id === id) ? d : touch({ ...d, options: [...d.options, { id, name: tidy(name) }] })));
 
 export const renameOption = (id: string, name: string): Edit =>
   structural((d) => touch({ ...d, options: d.options.map((o) => (o.id === id ? { ...o, name: typingText(name, T.name) } : o)) }));
@@ -137,8 +138,8 @@ export const moveOption = (id: string, by: -1 | 1): Edit => structural((d) => to
 
 // Factors
 
-export const addFactor = (name: string): Edit =>
-  structural((d) => (d.factors.length >= LIMITS.factors ? d : touch({ ...d, factors: [...d.factors, { id: newId(), name: tidy(name), weight: 3 }] })));
+export const addFactor = (name: string, id: string = newId()): Edit =>
+  structural((d) => (d.factors.length >= LIMITS.factors || d.factors.some((f) => f.id === id) ? d : touch({ ...d, factors: [...d.factors, { id, name: tidy(name), weight: 3 }] })));
 
 export const renameFactor = (id: string, name: string): Edit =>
   structural((d) => touch({ ...d, factors: d.factors.map((f) => (f.id === id ? { ...f, name: typingText(name, T.name) } : f)) }));
@@ -235,6 +236,16 @@ export const removeNote = (id: string): Edit => (d) => touch({ ...d, notes: d.no
 
 // Groups
 
+/** What new groups do with results in the shared folder: publish on purpose when blind, after each approval when open. */
+export const defaultFolderResults = (scoring: GroupSettings['scoring']) => (scoring === 'open' ? 'approval' : 'publish');
+
+/** "After each approval" only with open scoring: blind groups' results go out only when the organizer publishes them. */
+function withFolderRule(settings: GroupSettings): GroupSettings {
+  const { folderResults: raw, ...rest } = settings;
+  const folderResults = cleanFolderResults(raw, settings.scoring);
+  return folderResults ? { ...rest, folderResults } : rest;
+}
+
 /** Turns on scoring with others. The organizer has to choose anonymous or named; there is no default. */
 export const startGroup = (settings: GroupSettings, myName = ''): Edit => (d) => {
   if (d.group) return d;
@@ -243,7 +254,7 @@ export const startGroup = (settings: GroupSettings, myName = ''): Edit => (d) =>
     ...d,
     group: {
       role: 'organizer',
-      settings: { ...settings },
+      settings: withFolderRule(settings),
       inviteId: newId(16),
       ballots: [],
       includeOwn: true,
@@ -258,11 +269,53 @@ export const setGroupSettings = (patch: Partial<GroupSettings>): Edit => (d) => 
   const g = d.group;
   if (!g || g.role !== 'organizer') return d;
   if (patch.anonymity !== undefined && patch.anonymity !== g.settings.anonymity && g.anonymityLocked) return d;
-  const settings: GroupSettings = { ...g.settings, ...patch };
+  const settings: GroupSettings = withFolderRule({ ...g.settings, ...patch });
   const expected = settings.expected === undefined ? undefined : Math.round(settings.expected);
   if (expected === undefined || !Number.isFinite(expected) || expected < 1) delete settings.expected;
   else settings.expected = Math.min(LIMITS.expected, expected);
   return touch({ ...d, group: { ...g, settings } });
+};
+
+/**
+ * Organizer: lock the results file with a passphrase (its key settings; the key itself stays in
+ * keys.ts), or stop locking it (null). Bookkeeping: what people score doesn't change.
+ */
+export const setResultsLock = (kdf: Kdf | null): Edit => (d) => {
+  const g = d.group;
+  if (g?.role !== 'organizer') return d;
+  const { resultsKdf: _old, ...rest } = g;
+  return { ...d, group: kdf ? { ...rest, resultsKdf: kdf } : rest };
+};
+
+/** Organizer: results just went to the shared folder. */
+export const markPublished: Edit = (d) =>
+  d.group?.role === 'organizer' ? { ...d, group: { ...d.group, publishedAt: new Date().toISOString() } } : d;
+
+/** Results fitted to the options and factors this copy has, so nothing points at what isn't there. */
+function fitResult(result: GroupResult, d: Pick<Decision, 'options' | 'factors' | 'settings'>): GroupResult {
+  const options = new Set(d.options.map((o) => o.id));
+  const factors = new Set(d.factors.map((f) => f.id));
+  const baseline = d.settings.mode === 'pugh' ? d.settings.baselineId : undefined;
+  const weights = result.weights?.filter((w) => factors.has(w.factorId));
+  return {
+    ballots: result.ballots,
+    cells: result.cells.filter((c) => options.has(c.optionId) && factors.has(c.factorId) && c.optionId !== baseline),
+    ...(weights?.length && { weights }),
+  };
+}
+
+/** Participant: results are newer than the ones this copy shows. Equal or older ones change nothing. */
+export const isNewerResult = (d: Decision, at: string) => d.group?.role === 'participant' && (!d.group.resultsAt || at > d.group.resultsAt);
+
+/**
+ * Participant: group results from the shared folder, already checked to be signed by the organizer.
+ * `at` is the organizer's last-change time in that file. A view of the group, not the person's own
+ * edit, so the copy's last-changed time stays.
+ */
+export const applyFolderResults = (result: GroupResult, at: string): Edit => (d) => {
+  const g = d.group;
+  if (g?.role !== 'participant' || !isNewerResult(d, at)) return d;
+  return { ...d, group: { ...g, result: fitResult(result, d), resultsAt: at } };
 };
 
 /** The name that goes with your invites or your ballot, in named groups. Trimmed when it's sent. */
@@ -367,7 +420,11 @@ export const refreshFromInvite = (invite: Invite, signed: boolean): Edit => (d) 
   const ownWeight = new Map(d.factors.map((f) => [f.id, f.weight]));
   const everyone = invite.settings.weights === 'everyone';
   const { description: _description, group: _group, ...rest } = d;
-  const { result: _result, ...kept } = g;
+  const { result: oldResult, resultsAt: oldAt, ...kept } = g;
+  // Results go with whichever is newer: the ones in this invite, or the ones the copy already shows.
+  const inviteResult = invite.result && (!oldAt || inv.updatedAt >= oldAt);
+  const result = inviteResult ? invite.result : oldResult && fitResult(oldResult, inv);
+  const resultsAt = inviteResult ? inv.updatedAt : oldAt;
   return touch({
     ...rest,
     title: inv.title,
@@ -386,7 +443,8 @@ export const refreshFromInvite = (invite: Invite, signed: boolean): Edit => (d) 
       ...kept,
       inviteVersion: inv.updatedAt,
       settings: { ...invite.settings, anonymity: g.settings.anonymity },
-      ...(invite.result && { result: invite.result }),
+      ...(result && { result }),
+      ...(result && resultsAt && { resultsAt }),
       ...(!g.organizerKey && signed && invite.key && { organizerKey: invite.key }),
       ...(signed && invite.sealKey && { organizerSealKey: invite.sealKey }),
     },

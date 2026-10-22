@@ -28,54 +28,66 @@ export function downloadText(text: string, fileName: string, type: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-/** Opens the system file picker and returns the chosen file's text, size-checked. */
-export function pickFileText(accept: string): Promise<string | null> {
-  return new Promise((resolve, reject) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = accept;
-    input.addEventListener('change', () => {
-      const file = input.files?.[0];
-      if (!file) return resolve(null);
-      if (file.size > LIMITS.fileBytes) return reject(new FormatError('too-big'));
-      file.text().then(resolve, () => reject(new FormatError('bad-data')));
-    });
-    input.addEventListener('cancel', () => resolve(null));
+/**
+ * Opens the system file picker for a file input and waits for the answer: the chosen files, or null
+ * when cancelled. The input sits in the page, hidden, while the picker is open: Safari can drop the
+ * answer for an input that isn't in the page.
+ */
+export function choose(input: HTMLInputElement): Promise<File[] | null> {
+  return new Promise((resolve) => {
+    const done = (files: File[] | null) => {
+      input.remove();
+      resolve(files?.length ? files : null);
+    };
+    input.hidden = true;
+    input.addEventListener('change', () => done([...(input.files ?? [])]), { once: true });
+    input.addEventListener('cancel', () => done(null), { once: true });
+    document.body.append(input);
     input.click();
   });
+}
+
+function fileInput(accept: string, multiple = false): HTMLInputElement {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = accept;
+  input.multiple = multiple;
+  return input;
+}
+
+/** Opens the system file picker and returns the chosen file's text, size-checked. */
+export async function pickFileText(accept: string): Promise<string | null> {
+  const file = (await choose(fileInput(accept)))?.[0];
+  if (!file) return null;
+  if (file.size > LIMITS.fileBytes) throw new FormatError('too-big');
+  try {
+    return await file.text();
+  } catch {
+    throw new FormatError('bad-data');
+  }
 }
 
 /**
  * Opens the system file picker for several files at once (ballots, for example). Returns each file's
  * text; files that are too big or unreadable are counted in `failed`, not read.
  */
-export function pickFilesText(accept: string): Promise<{ texts: string[]; failed: number } | null> {
-  return new Promise((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = accept;
-    input.multiple = true;
-    input.addEventListener('change', async () => {
-      const files = [...(input.files ?? [])];
-      if (!files.length) return resolve(null);
-      const texts: string[] = [];
-      let failed = Math.max(0, files.length - LIMITS.ballots);
-      for (const file of files.slice(0, LIMITS.ballots)) {
-        if (file.size > LIMITS.fileBytes) {
-          failed++;
-          continue;
-        }
-        try {
-          texts.push(await file.text());
-        } catch {
-          failed++;
-        }
-      }
-      resolve({ texts, failed });
-    });
-    input.addEventListener('cancel', () => resolve(null));
-    input.click();
-  });
+export async function pickFilesText(accept: string): Promise<{ texts: string[]; failed: number } | null> {
+  const files = await choose(fileInput(accept, true));
+  if (!files) return null;
+  const texts: string[] = [];
+  let failed = Math.max(0, files.length - LIMITS.ballots);
+  for (const file of files.slice(0, LIMITS.ballots)) {
+    if (file.size > LIMITS.fileBytes) {
+      failed++;
+      continue;
+    }
+    try {
+      texts.push(await file.text());
+    } catch {
+      failed++;
+    }
+  }
+  return { texts, failed };
 }
 
 export const canShareNatively = () => typeof navigator.share === 'function';

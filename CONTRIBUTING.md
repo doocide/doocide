@@ -32,13 +32,16 @@ That runs the type check, both builds and every test, including the privacy rule
 These keep Doocide trustworthy. A pull request that breaks one isn't merged, however good the rest is.
 
 - **Nothing leaves the device unless the user shares it.** No analytics, telemetry, remote fonts, third-party scripts or network calls the user didn't start.
-- **Private notes stay private.** Every share goes through `src/format/share.ts`, and the tests in `tests/privacy.test.ts` prove it.
-- **Treat incoming links and files as hostile.** Plain text only, size limits, strict checks.
+- **Private notes stay private.** Every share goes through `src/format/share.ts`, every file written to a shared folder through `src/app/folder.ts`, and the tests in `tests/privacy.test.ts` prove it.
+- **Treat incoming links and files as hostile.** Plain text only, size limits, strict checks. That includes invites, ballots and results files from a shared folder: check the signature before trusting any of it.
+- **One door for each risky thing.** Network calls only in `src/app/net.ts`, WebCrypto only in `src/format/crypto.ts`, shared folders only in `src/app/folder.ts`, localStorage only in `src/app/prefs.ts`. `tests/source.test.ts` checks it.
+- **No background work.** Doocide reads or writes a shared folder, or anything else outside the page, only when someone taps a button.
+- **No home-made cryptography.** WebCrypto only, a fresh IV for every encryption, and never a passphrase or private key stored in plain text.
 - **No brand or product names in anything users see:** interface text, translations, templates, examples and test data. Use stand-ins like "Car A", "Option B" or example.com.
 - **No real people's names or data** in templates, tests or examples.
 - **Every privacy rule has a test.** If you add a rule, add the test that fails when it breaks.
 
-The full list lives in [CLAUDE.md](CLAUDE.md), under the "Never" sections.
+The full list lives in [CLAUDE.md](CLAUDE.md), under the "Never" sections, and [SECURITY.md](SECURITY.md) explains what they add up to.
 
 ## Add a language
 

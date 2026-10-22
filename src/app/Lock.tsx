@@ -40,6 +40,17 @@ function PassphraseForm({ label, action, onSubmit }: { label: string; action: st
   );
 }
 
+/** A passphrase asked for in a dialog, over the decision: a group's locked results file, for example. */
+export function PassphraseDialog({ title, text, onSubmit, onClose }: { title: string; text: string; onSubmit: (passphrase: string) => Promise<void>; onClose: () => void }) {
+  return (
+    <Dialog title={title} onClose={onClose}>
+      <p className="small">{text}</p>
+      <PassphraseForm label={t('unlock.passphrase')} action={t('unlock.open')} onSubmit={onSubmit} />
+      <p className="muted small">{t('unlock.never')}</p>
+    </Dialog>
+  );
+}
+
 /** Someone sent a link or file locked with a passphrase. */
 export function PassphrasePrompt({ backup, onOpen, onCancel }: { backup: boolean; onOpen: (passphrase: string) => Promise<void>; onCancel: () => void }) {
   return (

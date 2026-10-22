@@ -18,7 +18,9 @@ v0.4.1 (2026-10-21): sealing made plain. Invites and ballots that won't be seale
 
 v0.4.2 (2026-10-21): invites kept in step. Each participant copy follows an invite version (the organizer's last-change time), and older invites can't roll it back; a newer invite lists what it changes (new, removed and renamed items, importance, rules); organizers see when they've edited since their last invite (`invites.ts` fingerprints what an invite shows); the scoring rules lock once an invite is out.
 
-Next: 2d, collecting ballots through a synced cloud folder, which finishes milestone 2. Then milestone 3 (AI copy-prompt and MCP, public sharing, room mode with QR codes, decision journal, ~35 languages).
+Milestone 2d released as v0.5.0 (2026-10-21), which finishes milestone 2: a shared cloud folder for a group (`folder.ts`, the only file touching folder handles; read or written only on a tap, never watched). Organizers connect a folder, put the signed invite in it, collect sealed ballots with "Check for new ballots", and publish results there: never, when they publish, or after each approval (open scoring only; `settings.folderResults`). Results files are signed by the organizer's device key (`signEnvelope`) and can be locked with a passphrase whose derived key is kept, non-extractable, by the organizer and by each participant after one entry. Participants save sealed ballots to the folder and "Check for updates" (newer results, or a newer invite). Browsers without folder access download files and pick them back. Also: an instant description tooltip on option cells, new options and factors take focus, and Safari's file pickers fixed (inputs stay in the page while open).
+
+Next: milestone 3 (AI copy-prompt and MCP, public sharing, room mode with QR codes, decision journal, ~35 languages). Plan it first.
 
 ## Stack and commands
 
@@ -33,13 +35,13 @@ React 19 + TypeScript 7 + Vite 8, built into one HTML file (vite-plugin-singlefi
 
 - `src/format/` (MIT): file format, checks (`validate.ts`), cleaning (`sanitize.ts`), links (`codec.ts`), the only share path (`share.ts`), signatures, short codes and encryption (`crypto.ts`, the only file allowed to use `crypto.subtle`), tables and CSV.
 - `src/engine/` (MIT): scoring and sensitivity ("what flips the winner").
-- `src/app/` (AGPL): the UI. `net.ts` is the only file allowed to call `fetch`; `prefs.ts` the only one allowed to use localStorage; `keys.ts` picks and keeps signing and sealing keys (non-extractable, in IndexedDB); `store.ts` encrypts stored decisions while the library lock is on; `Lock.tsx` holds every passphrase screen; `invites.ts` keeps invites and participants' copies in step.
+- `src/app/` (AGPL): the UI. `net.ts` is the only file allowed to call `fetch`; `prefs.ts` the only one allowed to use localStorage; `keys.ts` picks and keeps signing and sealing keys (non-extractable, in IndexedDB); `store.ts` encrypts stored decisions while the library lock is on; `Lock.tsx` holds every passphrase screen; `invites.ts` keeps invites and participants' copies in step; `folder.ts` is the only file allowed to touch folder and file handles (shared folders: one checked way in, never watched); `groupFiles.ts` makes and checks the group's files (signed invites and results, ballots from files or the folder, updates for participants); `SharedFolder.tsx` is the organizer's folder block. IndexedDB version 4 adds a `handles` store for folder handles.
 - `src/i18n/`: language system; packs in `src/i18n/locales/*.json`, list in `languages.ts`.
 - `src/packs/`: `remote.ts` (online, fetch packs on demand) or `embedded.ts` (offline build), chosen by Vite alias `@packs`.
 - `tools/`: build plugins (security policy hashes, static packs).
 - `schema/` (MIT): JSON Schema. `templates/` (CC0): starter templates.
 - `docs/assets/`: README logo and screenshots. The example decision `summer-trip.doocide` drives the README's example link and every screenshot; when the UI changes visibly, refresh them with `sandbox/maintainer/screenshots.md` (local, gitignored) and `node tools/demo-link.mjs --update-readme`.
-- `tests/`: `privacy.test.ts` and `input.test.ts` enforce the never-lists below; `group.test.ts` checks merging and the ballot checks; `crypto.test.ts` checks signatures, short codes and encryption; `invites.test.ts` checks invite versions and changes; `build.test.ts` checks the built pages.
+- `tests/`: `privacy.test.ts` and `input.test.ts` enforce the never-lists below; `group.test.ts` checks merging and the ballot checks; `crypto.test.ts` checks signatures, short codes and encryption; `invites.test.ts` checks invite versions and changes; `folder.test.ts` checks what goes in a shared folder, signed and locked results, and the folder setting; `build.test.ts` checks the built pages.
 
 The app is AGPL-3.0-or-later. The file format, schema, templates and scoring engine are MIT or CC0, so other tools can adopt them.
 

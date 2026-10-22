@@ -124,3 +124,59 @@ export function ballotFrom(organizer: Decision, voterId: string, value: number, 
 
 /** Ballots as they arrive without a signature, the way Doocide 0.2.0 sent them. */
 export const unsigned = (...ballots: Ballot[]): ReceivedBallot[] => ballots.map((ballot) => ({ ballot, signature: 'none' }));
+
+/**
+ * A shared folder in memory, shaped like the browser's folder handle. `permission` is what the browser
+ * says now; `answer` is what the person says when asked again.
+ */
+export class FakeFolder {
+  readonly kind = 'directory' as const;
+  readonly files = new Map<string, string>();
+  constructor(
+    readonly name = 'Trip folder',
+    public permission: PermissionState = 'granted',
+    readonly answer: PermissionState = 'granted',
+  ) {}
+
+  async queryPermission() {
+    return this.permission;
+  }
+
+  async requestPermission() {
+    this.permission = this.answer;
+    return this.answer;
+  }
+
+  async *values() {
+    for (const name of [...this.files.keys()]) yield this.entry(name);
+  }
+
+  async getFileHandle(name: string, options?: { create?: boolean }) {
+    if (!this.files.has(name) && !options?.create) throw new Error('NotFoundError');
+    return this.entry(name);
+  }
+
+  private entry(name: string) {
+    const files = this.files;
+    return {
+      kind: 'file' as const,
+      name,
+      async getFile() {
+        const text = files.get(name);
+        if (text === undefined) throw new Error('NotFoundError');
+        return new File([text], name);
+      },
+      async createWritable() {
+        let text = '';
+        return {
+          async write(chunk: string) {
+            text += chunk;
+          },
+          async close() {
+            files.set(name, text);
+          },
+        };
+      },
+    };
+  }
+}

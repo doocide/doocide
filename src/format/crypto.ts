@@ -1,17 +1,17 @@
-// Signatures for invites and ballots. MIT licensed (see LICENSE in this folder).
+// Signatures for invites, ballots and group results files. MIT licensed (see LICENSE in this folder).
 //
 // WebCrypto only: ECDSA on the P-256 curve with SHA-256. Nothing here is hand-made cryptography; this
-// file only decides what gets signed. That is the cleaned envelope data (validateBallot/validateInvite)
-// without its `sig` field, written as canonical JSON (keys sorted, undefined left out), so the sender
-// and the receiver sign and check exactly the same text.
+// file only decides what gets signed. That is the cleaned data (validateBallot, validateInvite, or the
+// whole cleaned envelope for results files) without its `sig` field, written as canonical JSON (keys
+// sorted, undefined left out), so the sender and the receiver sign and check exactly the same text.
 //
 // Keys are base64url of the raw public key (65 bytes). Private keys never pass through this file as
 // data: callers hand over a CryptoKey, made non-extractable (see src/app/keys.ts).
 
 import { deflate, fromBase64Url, inflateCapped, toBase64Url } from './codec';
 import { ITERATIONS, LIMITS } from './limits';
-import { FORMAT_VERSION, type Ballot, type Box, type Invite, type Kdf, type PassphraseEnvelope, type SealedEnvelope, type Signature } from './types';
-import { validateBallot, validateInvite } from './validate';
+import { FORMAT_VERSION, type Ballot, type Box, type Envelope, type Invite, type Kdf, type PassphraseEnvelope, type SealedEnvelope, type Signature } from './types';
+import { validateBallot, validateEnvelope, validateInvite } from './validate';
 
 const CURVE = { name: 'ECDSA', namedCurve: 'P-256' } as const;
 const SIGN = { name: 'ECDSA', hash: 'SHA-256' } as const;
@@ -82,6 +82,22 @@ export async function checkInvite(inv: Invite): Promise<Signature> {
   if (!inv.key && !inv.sig) return 'none';
   if (!inv.key || !inv.sig) return 'invalid';
   return (await verify(inv.key, inv.sig, canonicalJson(withoutSig(inv)))) ? 'valid' : 'invalid';
+}
+
+/**
+ * Signs a whole decision envelope (a group results file): the format version, the kind and the data
+ * all count, so nobody can turn signed results into something else or edit a single number.
+ */
+export async function signEnvelope(env: Envelope, signer: Signer): Promise<Envelope> {
+  const body = withoutSig(validateEnvelope({ ...withoutSig(env), key: signer.publicKey }));
+  return { ...body, sig: await sign(signer, canonicalJson(body)) };
+}
+
+/** Checks an envelope that went through validateEnvelope. Who the key belongs to is the caller's question. */
+export async function checkEnvelope(env: Envelope): Promise<Signature> {
+  if (!env.key && !env.sig) return 'none';
+  if (!env.key || !env.sig) return 'invalid';
+  return (await verify(env.key, env.sig, canonicalJson(withoutSig(env)))) ? 'valid' : 'invalid';
 }
 
 /**
@@ -162,6 +178,24 @@ export async function lockWithPassphrase(innerJson: string, passphrase: string):
 export async function openWithPassphrase(env: PassphraseEnvelope, passphrase: string): Promise<string> {
   if (!env.wrappedKey) return unseal(await passphraseKey(passphrase, env.kdf, ['decrypt']), env);
   return unseal(await unwrapDataKey(env.wrappedKey, await passphraseKey(passphrase, env.kdf, ['unwrapKey'])), env);
+}
+
+// Files locked again and again with one passphrase: a group's results file, rewritten at each publish.
+// The organizer keeps the key a passphrase makes (non-extractable, never the passphrase), and so does
+// each person who entered it once. Every file still gets a fresh IV, so no IV is ever used twice.
+
+/** The key a passphrase makes with these settings. It can encrypt and decrypt, but can never be read out. */
+export const keyFromPassphrase = (passphrase: string, kdf: Kdf): Promise<CryptoKey> => passphraseKey(passphrase, kdf, ['encrypt', 'decrypt']);
+
+/** Locks an envelope's JSON with a key from keyFromPassphrase. The file looks like any passphrase-locked file. */
+export async function lockWithKey(innerJson: string, key: CryptoKey, kdf: Kdf): Promise<PassphraseEnvelope> {
+  return { doocide: FORMAT_VERSION, enc: 'passphrase', kdf, ...(await seal(key, innerJson)) };
+}
+
+/** The inner JSON of a passphrase envelope, opened with a key kept from earlier, or WrongKey. */
+export async function openWithKey(env: PassphraseEnvelope, key: CryptoKey): Promise<string> {
+  if (env.wrappedKey) throw new WrongKey();
+  return unseal(key, env);
 }
 
 // The library lock

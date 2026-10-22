@@ -3,12 +3,13 @@
 
 import { useState } from 'react';
 import { ballotStatus } from '../engine';
-import type { Decision, StoredBallot } from '../format/types';
+import type { Decision, GroupResult, StoredBallot } from '../format/types';
 import { formatDate, t } from '../i18n';
 import { CompareCodes, useDeviceKey, useShortCode } from './codes';
 import { confirmKey, removeBallot, setBallotIncluded, setIncludeOwn, unconfirmKey, type Edit } from './edit';
 import { editedSinceInvite } from './invites';
-import { Icon, useConfirm } from './ui';
+import { SharedFolder, afterApproval } from './SharedFolder';
+import { Icon, useConfirm, useToast } from './ui';
 
 /** A ballot's name: the one its sender typed (named groups), or a number. */
 export function ballotLabel(d: Decision, b: StoredBallot, index: number): string {
@@ -20,13 +21,23 @@ interface Props {
   d: Decision;
   /** Ballots counting in the group result right now, the organizer's own included. */
   voters: number;
+  /** The group's combined result right now. */
+  result: GroupResult | null;
   onEdit: (edit: Edit) => void;
   onInvite: () => void;
   onOpenBallots: () => void;
+  /** Check the shared folder for new ballots. */
+  onCollect: () => void;
 }
 
-export function BallotsPanel({ d, voters, onEdit, onInvite, onOpenBallots }: Props) {
+export function BallotsPanel({ d, voters, result, onEdit, onInvite, onOpenBallots, onCollect }: Props) {
   const ask = useConfirm();
+  const toast = useToast();
+  /** Who counts changed: with "after each approval", the results in the shared folder follow. */
+  const changeCount = (change: Edit) => {
+    onEdit(change);
+    void afterApproval(change(d), onEdit, toast);
+  };
   const [comparing, setComparing] = useState<{ ballot: StoredBallot; label: string } | null>(null);
   const myCode = useShortCode(useDeviceKey());
   const g = d.group;
@@ -49,7 +60,7 @@ export function BallotsPanel({ d, voters, onEdit, onInvite, onOpenBallots }: Pro
       <ul className="ballot-list">
         <li>
           <label className="check">
-            <input type="checkbox" checked={g.includeOwn} onChange={(e) => onEdit(setIncludeOwn(e.target.checked))} />
+            <input type="checkbox" checked={g.includeOwn} onChange={(e) => changeCount(setIncludeOwn(e.target.checked))} />
             {t('ballots.you')}
           </label>
           <span className="muted small">{own ? t('ballots.yourScores', { count: own }) : t('ballots.youNoScores')}</span>
@@ -60,7 +71,7 @@ export function BallotsPanel({ d, voters, onEdit, onInvite, onOpenBallots }: Pro
           return (
             <li key={b.voterId}>
               <label className="check">
-                <input type="checkbox" checked={b.included} onChange={(e) => onEdit(setBallotIncluded(b.voterId, e.target.checked))} />
+                <input type="checkbox" checked={b.included} onChange={(e) => changeCount(setBallotIncluded(b.voterId, e.target.checked))} />
                 <bdi>{label}</bdi>
               </label>
               {status === 'verified' && (
@@ -88,7 +99,7 @@ export function BallotsPanel({ d, voters, onEdit, onInvite, onOpenBallots }: Pro
                 title={t('ballots.remove', { name: label })}
                 onClick={async () => {
                   const ok = await ask({ title: t('ballots.removeTitle'), message: t('ballots.confirmRemove'), confirmLabel: t('ballots.removeTitle'), danger: true });
-                  if (ok) onEdit(removeBallot(b.voterId));
+                  if (ok) changeCount(removeBallot(b.voterId));
                 }}
               >
                 <Icon name="trash" size={16} />
@@ -99,6 +110,7 @@ export function BallotsPanel({ d, voters, onEdit, onInvite, onOpenBallots }: Pro
       </ul>
       {count === 0 && <p className="muted small">{t('ballots.none')}</p>}
 
+      <p className="muted small">{t('ballots.how')}</p>
       <div className="actions start">
         <button className="button primary" onClick={onInvite}>
           <Icon name="people" size={18} />
@@ -109,7 +121,8 @@ export function BallotsPanel({ d, voters, onEdit, onInvite, onOpenBallots }: Pro
           {t('ballots.open')}
         </button>
       </div>
-      <p className="muted small">{t('ballots.how')}</p>
+      {/* Right under the buttons, so it shows without scrolling far: the folder is how many groups collect. */}
+      <SharedFolder d={d} result={result} onEdit={onEdit} onCollect={onCollect} />
       <p className="muted small">
         <Icon name="lock" size={12} /> {t('ballots.sameDevice')}
       </p>

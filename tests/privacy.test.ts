@@ -2,6 +2,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { addBallots, confirmKey, endGroup, setGroupSettings, startGroup } from '../src/app/edit';
+import { saveToFolder, type FolderHandle } from '../src/app/folder';
+import { publishResults, signedInvite } from '../src/app/groupFiles';
 import { ballotKey, deviceKey, forgetDecisionKey } from '../src/app/keys';
 import { ballotStatus, groupView } from '../src/engine';
 import { joinInvite } from '../src/format/create';
@@ -22,7 +24,7 @@ import {
 } from '../src/format/share';
 import type { AnyEnvelope, Decision, Envelope } from '../src/format/types';
 import { validateBallot, validateEnvelope } from '../src/format/validate';
-import { NAME_MARKER, PRIVATE_MARKER, SHARED_MARKER, ballotFrom, groupDecision, participantCopy, sampleDecision, unsigned } from './fixtures';
+import { FakeFolder, NAME_MARKER, PRIVATE_MARKER, SHARED_MARKER, ballotFrom, groupDecision, participantCopy, sampleDecision, unsigned } from './fixtures';
 
 const fromBase64Url = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4)), (c) => c.charCodeAt(0));
 
@@ -211,6 +213,36 @@ describe('groups: private notes and group data never leave the device', () => {
       expect(url.search).toBe('');
       expect(url.hash.startsWith('#d=')).toBe(true);
     }
+  });
+});
+
+describe('files written to a shared or synced folder', () => {
+  it('carry no private notes, no ballots and no names, for every kind that goes there', async () => {
+    const d = organizerWithBallots('named');
+    const folder = new FakeFolder();
+    const handle = folder as unknown as FolderHandle;
+    await saveToFolder(handle, { kind: 'invite', env: await signedInvite(d, groupView(d)!.result) });
+    expect(await publishResults(d, handle)).toBe('written');
+    const p = joinInvite((await signedInvite(d)).data, 'en', true);
+    const copy = { ...participantCopy(d), group: { ...participantCopy(d).group!, organizerSealKey: p.group!.organizerSealKey! } };
+    const env = ballotEnvelope(copy);
+    const signed = { ...env, data: await signBallot(env.data, await ballotKey(copy)) };
+    // What goes in before sealing, too: the same rules as any ballot.
+    let inner = '';
+    await saveToFolder(handle, { kind: 'ballot', env: signed, seal: (json) => ((inner = json), sealTo(copy.group.organizerSealKey, json)) });
+    expect(inner).not.toContain(PRIVATE_MARKER);
+    expect(folder.files.size).toBe(3);
+    for (const [name, text] of folder.files) {
+      expect(text, name).not.toContain(PRIVATE_MARKER);
+      expect(text, name).not.toContain('voterA');
+      expect(text, name).not.toContain(NAME_MARKER);
+      expect(name).not.toContain(NAME_MARKER);
+    }
+  });
+
+  it('never include a backup', async () => {
+    const d = organizerWithBallots();
+    await expect(saveToFolder(new FakeFolder() as unknown as FolderHandle, { kind: 'results', env: backupEnvelope(d) })).rejects.toThrow();
   });
 });
 

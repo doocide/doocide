@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { addBallots, setBallotIncluded, setIncludeOwn } from '../src/app/edit';
 import { combine, combineVoters, computeResults, disagreements, groupView, reviewBallots, spreadLevel } from '../src/engine';
 import { joinInvite } from '../src/format/create';
-import { generateSealer, sealTo } from '../src/format/crypto';
+import { generateSealer, generateSigner, keyFromPassphrase, lockWithKey, newKdf, sealTo, signEnvelope } from '../src/format/crypto';
 import { ballotEnvelope, inviteEnvelope, resultsEnvelope } from '../src/format/share';
 import type { Ballot, Decision } from '../src/format/types';
 import { ballotFrom, groupDecision, participantCopy, unsigned } from './fixtures';
@@ -171,7 +171,7 @@ describe('the whole round trip', () => {
   });
 
   it('every group file matches the published schema, sealed ones too', async () => {
-    const start = groupDecision({ scoring: 'open', weights: 'everyone' }, { settings: { mode: 'weighted', scaleMax: 10, pughSteps: 1, rows: 'options' } });
+    const start = groupDecision({ scoring: 'open', weights: 'everyone', folderResults: 'approval' }, { settings: { mode: 'weighted', scaleMax: 10, pughSteps: 1, rows: 'options' } });
     const organizer = addBallots(unsigned(ballotFrom(start, 'v1', 4)))(start);
     const result = groupView(organizer)!.result;
     const sealer = await generateSealer();
@@ -180,6 +180,12 @@ describe('the whole round trip', () => {
       ballotEnvelope(participantCopy(groupDecision({ weights: 'everyone' }))),
       resultsEnvelope(organizer, result),
       await sealTo(sealer.publicKey, JSON.stringify(ballotEnvelope(participantCopy(groupDecision())))),
+      // A results file for the shared folder: signed, and locked with a passphrase key.
+      await signEnvelope(resultsEnvelope(organizer, result), await generateSigner()),
+      await (async () => {
+        const kdf = newKdf();
+        return lockWithKey('{}', await keyFromPassphrase('a results passphrase', kdf), kdf);
+      })(),
     ];
     for (const env of files) expect(validateSchema(JSON.parse(JSON.stringify(env))), JSON.stringify(validateSchema.errors)).toBe(true);
   });
