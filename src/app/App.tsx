@@ -424,6 +424,8 @@ export function App() {
             ...(invite.organizerName && { organizerName: invite.organizerName }),
             ...(signed && invite.key && { organizerKey: invite.key }),
             joined: Boolean(joined),
+            // Mirrors joinInvite: only a signed invite's sealing key is used.
+            sealed: signed && Boolean(invite.sealKey),
           },
           onSave: () => {
             if (joined) {

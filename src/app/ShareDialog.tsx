@@ -21,7 +21,7 @@ import {
 import type { AnyEnvelope, BallotEnvelope, Decision, EncryptedEnvelope, GroupResult } from '../format/types';
 import { t } from '../i18n';
 import { useDeviceKey, useShortCode } from './codes';
-import { markSent, restartVoter, setMyName, type Edit } from './edit';
+import { ballotSealed, checkOrganizerFirst, confirmOrganizer, markSent, restartVoter, setMyName, type Edit } from './edit';
 import { FILE_EXTENSION, canShareNatively, copyText, downloadText, safeFileName, shareNatively } from './files';
 import { ballotKey, deviceKey, sealingKey } from './keys';
 import { decisionTitle } from './labels';
@@ -158,6 +158,11 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
   const myCode = useShortCode(named ? signingKey : undefined);
   // This device can't sign as the person who sent the earlier ballot (a copy restored elsewhere, say).
   const newVoter = Boolean(g.key && signingKey && g.key !== signingKey);
+  const sealed = ballotSealed(d);
+  // Named groups, first ballot: compare the organizer's code before the name goes out, or choose not to.
+  const [skipCheck, setSkipCheck] = useState(false);
+  const mustCheck = checkOrganizerFirst(d) && !skipCheck;
+  const organizerCode = useShortCode(mustCheck ? g.organizerKey : undefined);
 
   useEffect(() => {
     let live = true;
@@ -186,7 +191,7 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
     t('share.countSharedNotes', { count: s.sharedNotes }),
     s.name ? t('share.asName', { name: s.name }) : named ? t('share.nameMissing') : t('share.noName'),
     named ? t('share.signedDevice', { code: myCode ?? '…' }) : t('share.signedDecision'),
-    ...(g.organizerSealKey ? [t('share.sealedBallot')] : []),
+    sealed ? t('share.sealedBallot') : t('share.notSealed'),
   ];
 
   return (
@@ -209,14 +214,30 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
         </label>
       )}
       <Preview title={decisionTitle(d)} included={included} leftOut={[t('share.privateNotesStay', { count: s.privateNotes })]} />
+      {!sealed && <p className="callout warn small">{t('share.notSealedHelp')}</p>}
       {s.scores === 0 && <p className="callout warn small">{t('share.ballotEmpty')}</p>}
       {newVoter && <p className="callout warn small">{t('participant.newVoter')}</p>}
       <p className="callout">{t('share.ballotHow')}</p>
       {named && myCode && <p className="muted small">{t('participant.yourCode', { code: myCode })}</p>}
       {!named && <p className="muted small">{t('participant.anonymousKey')}</p>}
+      {mustCheck && (
+        <section className="check-first" aria-labelledby="check-first-title">
+          <h3 id="check-first-title">{t('participant.checkFirstTitle')}</h3>
+          <p className="small">{t('participant.checkFirst')}</p>
+          <p className="code">{organizerCode ?? '…'}</p>
+          <div className="actions">
+            <button className="button" onClick={() => setSkipCheck(true)}>
+              {t('participant.skipCheck')}
+            </button>
+            <button className="button primary" disabled={!organizerCode} onClick={() => onEdit(confirmOrganizer)}>
+              {t('code.match')}
+            </button>
+          </div>
+        </section>
+      )}
       {!link ? (
         <Actions
-          disabled={missingName || !signingKey}
+          disabled={missingName || !signingKey || mustCheck}
           onFile={async () => saveOutgoing(await send(), `ballot-${newId(6)}`)}
           onLink={async () => setLink(await linkFor(await send()))}
         />
@@ -292,7 +313,7 @@ function OwnerShare({ d, result, initial, onClose }: Props) {
       t('share.notesStay', { count: s.notes }),
       ...(s.ballots ? [t('share.ballotsStay', { count: s.ballots })] : []),
     ];
-    help = t('share.inviteHow');
+    help = `${t('share.inviteHow')} ${t('share.sameDevice')}`;
     fileName = `${fileName}-invite`;
   } else if (kind === 'results' && result) {
     const s = resultsSummary(d, result);

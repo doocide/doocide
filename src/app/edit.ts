@@ -29,6 +29,21 @@ export const structureLocked = (d: Decision) => isParticipant(d);
 /** Scoring rules can't change under ballots that were scored with them. */
 export const scoringLocked = (d: Decision) => isParticipant(d) || (d.group?.role === 'organizer' && d.group.ballots.length > 0);
 
+/**
+ * Participant: their ballot will be sealed to the organizer. Only when the invite was signed and
+ * carried a sealing key; otherwise it travels readable, and the screens say so.
+ */
+export const ballotSealed = (d: Decision) => d.group?.role === 'participant' && Boolean(d.group.organizerSealKey);
+
+/**
+ * Participant in a named group, before their first ballot: compare the organizer's code before their
+ * name goes out. A fake invite signed with someone else's key shows a different code.
+ */
+export const checkOrganizerFirst = (d: Decision) => {
+  const g = d.group;
+  return g?.role === 'participant' && g.settings.anonymity === 'named' && Boolean(g.organizerKey) && !g.organizerConfirmed && !g.sentAt;
+};
+
 /** Participants set importance only when the organizer asked everyone to. */
 export const weightsLocked = (d: Decision) => isParticipant(d) && d.group?.settings.weights !== 'everyone';
 

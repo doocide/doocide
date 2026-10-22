@@ -14,6 +14,8 @@ v0.3.1 (2026-10-21): a layout toggle saved in the decision file (`settings.rows`
 
 Milestone 2c released as v0.4.0 (2026-10-21): links and files locked with a passphrase (PBKDF2-SHA-256, 600k iterations, then AES-GCM), ballots sealed to the organizer (a per-decision ECDH P-256 sealing key carried in the signed invite, a one-time key per ballot, HKDF, AES-GCM), and the optional library lock (a random data key wrapped with the passphrase key; locked rows and backups). Option and factor names wrap in full.
 
+v0.4.1 (2026-10-21): sealing made plain. Invites and ballots that won't be sealed say so (unsigned or older invites); sealing is worded as "the organizer's device", and organizers are told to open ballots in the browser that made the invite; in named groups, a participant's first ballot waits until they compare the organizer's code or choose to skip.
+
 Next: 2d, collecting ballots through a synced cloud folder, which finishes milestone 2. Then milestone 3 (AI copy-prompt and MCP, public sharing, room mode with QR codes, decision journal, ~35 languages).
 
 ## Stack and commands

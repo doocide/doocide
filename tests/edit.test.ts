@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { joinInvite } from '../src/format/create';
+import { generateSealer, generateSigner } from '../src/format/crypto';
+import { inviteEnvelope } from '../src/format/share';
 import {
   addBallots,
+  ballotSealed,
+  checkOrganizerFirst,
+  confirmOrganizer,
+  markSent,
   addFactor,
   addNote,
   addOption,
@@ -93,5 +100,28 @@ describe('rows layout', () => {
     const p = setRows('options')(participantCopy(organizer));
     const invite = { decision: organizer, settings: organizer.group!.settings, inviteId: 'invite1' };
     expect(refreshFromInvite(invite, false)(p).settings.rows).toBe('options');
+  });
+});
+
+describe('sealing and the organizer check', () => {
+  const invite = async (named: boolean, withSealKey: boolean) => {
+    const organizer = groupDecision({ anonymity: named ? 'named' : 'anonymous' });
+    const data = inviteEnvelope(organizer, undefined, withSealKey ? (await generateSealer()).publicKey : undefined).data;
+    return { ...data, key: (await generateSigner()).publicKey };
+  };
+
+  it('counts a ballot as sealed only when a signed invite carried a sealing key', async () => {
+    expect(ballotSealed(joinInvite(await invite(false, true), 'en', true))).toBe(true);
+    expect(ballotSealed(joinInvite(await invite(false, true), 'en', false))).toBe(false);
+    expect(ballotSealed(joinInvite(await invite(false, false), 'en', true))).toBe(false);
+  });
+
+  it('asks a named participant to check the organizer code before their first ballot, until they do or send', async () => {
+    const p = joinInvite(await invite(true, true), 'en', true);
+    expect(checkOrganizerFirst(p)).toBe(true);
+    expect(checkOrganizerFirst(confirmOrganizer(p))).toBe(false);
+    expect(checkOrganizerFirst(markSent(p))).toBe(false);
+    expect(checkOrganizerFirst(joinInvite(await invite(false, true), 'en', true))).toBe(false);
+    expect(checkOrganizerFirst(joinInvite(await invite(true, true), 'en', false))).toBe(false);
   });
 });

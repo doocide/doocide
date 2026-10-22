@@ -108,6 +108,9 @@ export function BallotsPanel({ d, voters, onEdit, onInvite, onOpenBallots }: Pro
         </button>
       </div>
       <p className="muted small">{t('ballots.how')}</p>
+      <p className="muted small">
+        <Icon name="lock" size={12} /> {t('ballots.sameDevice')}
+      </p>
       {myCode && (
         <p className="muted small">
           {t('ballots.yourCode', { code: myCode })} {t('ballots.yourCodeHelp')}

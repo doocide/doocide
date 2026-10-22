@@ -2120,6 +2120,24 @@ input[type='range'].unset {
   font-weight: 700;
 }
 
+/* Before a first named ballot: compare the organizer's code */
+.check-first {
+  margin: 12px 0;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--row-gold-hi);
+  background: var(--warn-soft);
+}
+
+.check-first h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.check-first .code {
+  background: var(--surface);
+}
+
 /* Verified by comparing short codes */
 .badge.verified {
   background: var(--good-soft);

@@ -7,7 +7,7 @@ import { BallotsPanel, ballotLabel } from './BallotsPanel';
 import { Cards, Setup } from './Cards';
 import { CompareCodes, useShortCode } from './codes';
 import { DetailDialog } from './DetailDialog';
-import { confirmOrganizer, scoringLocked, setRows, setTitle, structureLocked, tidyNames, weightsLocked, type Edit, type Target } from './edit';
+import { ballotSealed, confirmOrganizer, scoringLocked, setRows, setTitle, structureLocked, tidyNames, weightsLocked, type Edit, type Target } from './edit';
 import { downloadText, safeFileName } from './files';
 import { Grid, type GroupCells, type VoterValue } from './Grid';
 import { ResultsPanel } from './ResultsPanel';
@@ -18,7 +18,7 @@ import { Icon, Menu, Segmented, useMediaQuery } from './ui';
 export interface Incoming {
   kind: Exclude<Kind, 'ballot'>;
   /** An invite to score: the group's rules, who sent it (and the key that signed it), and whether this person already started. */
-  invite?: { settings: GroupSettings; organizerName?: string; organizerKey?: string; joined: boolean };
+  invite?: { settings: GroupSettings; organizerName?: string; organizerKey?: string; joined: boolean; sealed: boolean };
   onSave: () => void;
   onDiscard: () => void;
 }
@@ -64,6 +64,7 @@ function IncomingBanner({ incoming, title }: { incoming: Incoming; title: string
         )}
         {invite && <p className="small">{invite.settings.anonymity === 'anonymous' ? t('group.anonymousPromise') : t('group.namedPromise')}</p>}
         {code && <p className="small muted">{t('incoming.signedCode', { code })}</p>}
+        {invite && !invite.sealed && <p className="small warn-text">{t('incoming.notSealed')}</p>}
       </div>
       <div className="actions">
         <button className="button" onClick={incoming.onDiscard}>
@@ -113,6 +114,7 @@ function ParticipantBar({ d, onSend, onEdit }: { d: Decision; onSend: () => void
             </p>
           )
         )}
+        {!ballotSealed(d) && <p className="small warn-text">{t('participant.notSealed')}</p>}
       </div>
       <button className="button primary" onClick={onSend}>
         <Icon name="share" size={18} />
