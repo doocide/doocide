@@ -24,6 +24,8 @@ v0.5.1 (2026-10-21): hovering a score cell lights up its option's name strip in 
 
 v0.5.2 (2026-10-21): chat-safe links. Link data is still base64url(deflate-raw(JSON)) after `#d=`, but written with "_" as "-1" and "-" as "-0" (`toLinkText`/`fromLinkText` in `codec.ts`), so it holds only letters, digits and "-" and chat apps don't take it for formatting. Older `#d=` links (plain base64url, with "_") still open: `readFragment` tells them apart by their characters. The README's example link is regenerated with `node tools/demo-link.mjs --update-readme`.
 
+v0.5.3 (2026-10-21): link previews. The page carries Open Graph tags and a preview image (`public/og.png`, drawn by `tools/make-og.mjs`), the same for every link, since preview services never see past `#`. Copy puts the decision's title on the line above an unlocked link, so the chat shows it; locked and sealed links stay link-only, and the share sheet gets the title only for unlocked links.
+
 Next: milestone 3 (AI copy-prompt and MCP, public sharing, room mode with QR codes, decision journal, ~35 languages). Plan it first.
 
 ## Stack and commands
@@ -42,7 +44,7 @@ React 19 + TypeScript 7 + Vite 8, built into one HTML file (vite-plugin-singlefi
 - `src/app/` (AGPL): the UI. `net.ts` is the only file allowed to call `fetch`; `prefs.ts` the only one allowed to use localStorage; `keys.ts` picks and keeps signing and sealing keys (non-extractable, in IndexedDB); `store.ts` encrypts stored decisions while the library lock is on; `Lock.tsx` holds every passphrase screen; `invites.ts` keeps invites and participants' copies in step; `folder.ts` is the only file allowed to touch folder and file handles (shared folders: one checked way in, never watched); `groupFiles.ts` makes and checks the group's files (signed invites and results, ballots from files or the folder, updates for participants); `SharedFolder.tsx` is the organizer's folder block. IndexedDB version 4 adds a `handles` store for folder handles.
 - `src/i18n/`: language system; packs in `src/i18n/locales/*.json`, list in `languages.ts`.
 - `src/packs/`: `remote.ts` (online, fetch packs on demand) or `embedded.ts` (offline build), chosen by Vite alias `@packs`.
-- `tools/`: build plugins (security policy hashes, static packs).
+- `tools/`: build plugins (security policy hashes, static packs). `make-og.mjs` draws the link preview image `public/og.png` (the same for every link: previews never see past `#`).
 - `schema/` (MIT): JSON Schema. `templates/` (CC0): starter templates.
 - `docs/assets/`: README logo and screenshots. The example decision `summer-trip.doocide` drives the README's example link and every screenshot; when the UI changes visibly, refresh them with `sandbox/maintainer/screenshots.md` (local, gitignored) and `node tools/demo-link.mjs --update-readme`.
 - `tests/`: `privacy.test.ts` and `input.test.ts` enforce the never-lists below; `group.test.ts` checks merging and the ballot checks; `crypto.test.ts` checks signatures, short codes and encryption; `invites.test.ts` checks invite versions and changes; `folder.test.ts` checks what goes in a shared folder, signed and locked results, and the folder setting; `build.test.ts` checks the built pages.

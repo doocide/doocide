@@ -204,6 +204,7 @@
   "share.link": "Share link",
   "share.copy": "Copy link",
   "share.copied": "Link copied",
+  "share.copiedWithTitle": "Title and link copied.",
   "share.copyFailed": "Couldn't copy. Select the link and copy it yourself.",
   "share.shareVia": "Share via…",
   "share.longLink": "This link is long. Some apps cut long links; if it doesn't open, send the file instead.",

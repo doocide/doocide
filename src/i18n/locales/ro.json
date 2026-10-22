@@ -204,6 +204,7 @@
   "share.link": "Link de distribuire",
   "share.copy": "Copiază linkul",
   "share.copied": "Link copiat",
+  "share.copiedWithTitle": "Titlul și linkul au fost copiate.",
   "share.copyFailed": "Nu s-a putut copia. Selectează linkul și copiază-l manual.",
   "share.shareVia": "Distribuie prin…",
   "share.longLink": "Linkul e lung. Unele aplicații taie linkurile lungi; dacă nu se deschide, trimite fișierul.",

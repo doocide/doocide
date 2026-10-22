@@ -72,21 +72,35 @@ function Preview({ included, leftOut, title }: { included: string[]; leftOut: st
   );
 }
 
-/** The link once it's made: copy it, or hand it to the device's share sheet. */
-function LinkBox({ link, title }: { link: string; title: string }) {
+/** A link that's been made, and whether it travels readable (not locked with a passphrase, not sealed). */
+interface MadeLink {
+  url: string;
+  plain: boolean;
+}
+
+/**
+ * The link once it's made: copy it, or hand it to the device's share sheet. Copy puts the title on the
+ * line above, so the chat shows it: link previews never see the decision after "#". Never for a locked
+ * or sealed link, where the title is meant to stay hidden.
+ */
+function LinkBox({ link: { url: link, plain }, title }: { link: MadeLink; title: string }) {
   const toast = useToast();
+  const name = plain ? title.trim() : '';
   return (
     <>
       <textarea className="link-box" readOnly rows={3} value={link} dir="ltr" onFocus={(e) => e.currentTarget.select()} aria-label={t('share.link')} />
       {link.length > LONG_LINK && <p className="callout warn small">{t('share.longLink')}</p>}
       <div className="actions">
         {canShareNatively() && (
-          <button className="button" onClick={() => shareNatively({ title, url: link })}>
+          <button className="button" onClick={() => shareNatively(name ? { title: name, url: link } : { url: link })}>
             <Icon name="share" size={18} />
             {t('share.shareVia')}
           </button>
         )}
-        <button className="button primary" onClick={async () => toast((await copyText(link)) ? t('share.copied') : t('share.copyFailed'))}>
+        <button
+          className="button primary"
+          onClick={async () => toast((await copyText(name ? `${name}\n${link}` : link)) ? (name ? t('share.copiedWithTitle') : t('share.copied')) : t('share.copyFailed'))}
+        >
           {t('share.copy')}
         </button>
       </div>
@@ -117,7 +131,10 @@ const saveOutgoing = (out: Outgoing, name: string) => {
   downloadText(JSON.stringify(out, null, 2), `${name}${FILE_EXTENSION}`, 'application/json');
 };
 
-const linkFor = (out: Outgoing) => (out.enc === 'none' ? makeLink(out, location.href) : makeEncryptedLink(out, location.href));
+const linkFor = async (out: Outgoing): Promise<MadeLink> => ({
+  url: out.enc === 'none' ? await makeLink(out, location.href) : await makeEncryptedLink(out, location.href),
+  plain: out.enc === 'none',
+});
 
 /** How good a passphrase is: too short to use, fine, or strong. Length matters most; several random words are best. */
 export function passphraseStrength(p: string): 'short' | 'ok' | 'strong' {
@@ -156,7 +173,7 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
   const [busy, setBusy] = useState(false);
   const named = g.settings.anonymity === 'named';
   const [name, setName] = useState(g.myName ?? '');
-  const [link, setLink] = useState<string | null>(null);
+  const [link, setLink] = useState<MadeLink | null>(null);
   const [signingKey, setSigningKey] = useState<string>();
   const withName: Decision = { ...d, group: { ...g, myName: name } };
   const s = ballotSummary(withName);
@@ -275,7 +292,7 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
           onLink={async () => setLink(await linkFor(await send()))}
         />
       ) : (
-        <LinkBox link={link} title={decisionTitle(d)} />
+        <LinkBox link={link} title={d.title} />
       )}
       {missingName && <p className="muted small">{t('participant.nameNeeded')}</p>}
       {!link && (
@@ -316,7 +333,7 @@ export function ShareDialog({ d, result, initial, onEdit, onClose }: Props) {
 function OwnerShare({ d, result, initial, onEdit, onClose }: Props) {
   const organizer = d.group?.role === 'organizer';
   const [kind, setKind] = useState<Kind>(initial ?? (organizer ? 'invite' : 'decision'));
-  const [link, setLink] = useState<string | null>(null);
+  const [link, setLink] = useState<MadeLink | null>(null);
   const [locking, setLocking] = useState(false);
   const [passphrase, setPassphrase] = useState('');
   const [busy, setBusy] = useState(false);
@@ -444,7 +461,7 @@ function OwnerShare({ d, result, initial, onEdit, onClose }: Props) {
           onLink={() => run(async () => setLink(await linkFor(await outgoing())))}
         />
       ) : (
-        <LinkBox link={link} title={decisionTitle(d)} />
+        <LinkBox link={link} title={d.title} />
       )}
     </Dialog>
   );
