@@ -83,6 +83,8 @@ export function ResultsPanel({
   uiLang,
   group,
   abstained = [],
+  selected = [],
+  summary,
 }: {
   d: Decision;
   results: Results;
@@ -91,6 +93,10 @@ export function ResultsPanel({
   group?: GroupResult;
   /** Options you abstain from, by name: left out of your ranking, listed under it. */
   abstained?: string[];
+  /** The options the organizer selected: a badge in the ranking. */
+  selected?: string[];
+  /** The organizer's summary, shown to everyone else as their text in a marked frame. `from`: their name, when the group is named. */
+  summary?: { text: string; lang: string; from?: string };
 }) {
   const pugh = d.settings.mode === 'pugh';
   const winner = d.options.find((o) => o.id === results.winnerId);
@@ -140,6 +146,7 @@ export function ResultsPanel({
                   {optionName(d, o, uiLang)}
                 </span>
                 {win && <Icon name="trophy" size={16} />}
+                {selected.includes(r.optionId) && <span className="badge selected">{t('summary.selectedBadge')}</span>}
                 <span className="value">
                   {pugh ? (r.isBaseline ? t('pugh.baseline') : `${r.total > 0 ? '+' : ''}${formatNumber(r.total)}`) : `${formatNumber(r.percent, 1)}%`}
                 </span>
@@ -165,6 +172,22 @@ export function ResultsPanel({
             </span>
           ))}
         </p>
+      )}
+      {summary && (
+        <section className="their-summary" aria-labelledby="their-summary-title">
+          <h3 id="their-summary-title">
+            {t('summary.fromOrganizer')}
+            {summary.from && (
+              <>
+                {' · '}
+                <bdi className="author">{summary.from}</bdi> <span className="muted small">{t('incoming.notVerified')}</span>
+              </>
+            )}
+          </h3>
+          <p className="their-text" dir="auto" lang={summary.lang}>
+            {summary.text}
+          </p>
+        </section>
       )}
       {group && <Disagreements d={d} result={group} uiLang={uiLang} />}
     </section>

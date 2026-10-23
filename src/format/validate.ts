@@ -28,6 +28,7 @@ import {
   type Note,
   type Option,
   type Score,
+  type SelectionSummary,
   type Settings,
   type StoredBallot,
   type Translations,
@@ -378,6 +379,20 @@ export function cleanGroupSettings(v: unknown): GroupSettings {
   };
 }
 
+/** An organizer's selection summary: plain text with line breaks, and only options the decision has. */
+function cleanSummary(v: unknown, optionIds: Set<string>): SelectionSummary | undefined {
+  if (!isObj(v)) return undefined;
+  const text = cleanText(get(v, 'text'), T.summary, true);
+  if (!text) return undefined;
+  return {
+    text,
+    selected: cleanIdList(get(v, 'selected'), optionIds),
+    ballots: intIn(get(v, 'ballots'), 0, LIMITS.ballots + 1) ?? 0,
+    at: cleanDate(get(v, 'at'), new Date().toISOString()),
+    lang: cleanLang(get(v, 'lang')),
+  };
+}
+
 function cleanGroupResult(v: unknown, optionIds: Set<string>, factorIds: Set<string>, settings: Settings): GroupResult | undefined {
   if (!isObj(v)) return undefined;
   const pugh = settings.mode === 'pugh';
@@ -412,10 +427,12 @@ function cleanGroupResult(v: unknown, optionIds: Set<string>, factorIds: Set<str
     weights.set(factorId, { factorId, n, value, low, high, spread: numIn(get(item, 'spread'), 0, 1) ?? 0 });
   }
 
+  const summary = cleanSummary(get(v, 'summary'), optionIds);
   return {
     ballots: intIn(get(v, 'ballots'), 0, maxBallots) ?? 0,
     cells: [...cells.values()],
     ...(weights.size > 0 && { weights: [...weights.values()] }),
+    ...(summary && { summary }),
   };
 }
 
@@ -615,6 +632,9 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
   const rawShape = get(v, 'lastInviteShape');
   const lastInviteShape = typeof rawShape === 'string' && /^[a-z0-9]{1,16}$/.test(rawShape) ? rawShape : undefined;
   const publishedAt = get(v, 'publishedAt') === undefined ? undefined : cleanDate(get(v, 'publishedAt'), '');
+  const rawSummary = get(v, 'summary');
+  const savedSummary = cleanSummary(rawSummary, shape.optionIds);
+  const summary = savedSummary && { ...savedSummary, compare: isObj(rawSummary) && get(rawSummary, 'compare') !== false };
   let resultsKdf: Kdf | undefined;
   try {
     resultsKdf = get(v, 'resultsKdf') === undefined ? undefined : cleanKdf(get(v, 'resultsKdf'));
@@ -635,6 +655,7 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
     ...(lastInviteShape && { lastInviteShape }),
     ...(publishedAt && { publishedAt }),
     ...(resultsKdf && { resultsKdf }),
+    ...(summary && { summary }),
   };
 }
 

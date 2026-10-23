@@ -3,6 +3,7 @@ import { loadLocaleText } from '@packs';
 import en from './locales/en.json';
 import { formatMessage, type Vars } from './format';
 import { isRtl, isUiLanguage } from './languages';
+import { makeTranslator, type Translator } from './translator';
 
 type Dict = Record<string, string>;
 
@@ -28,6 +29,24 @@ function readPack(text: string | null): Dict | null {
 }
 
 export const getLang = () => lang;
+
+const packs = new Map<string, Dict>([['en', english]]);
+
+/**
+ * A translator for one supported language, apart from the interface's (a summary written for others,
+ * say). Its pack loads the first time, from the app's own address. null when it can't be loaded.
+ */
+export async function translatorFor(code: string): Promise<Translator | null> {
+  if (!isUiLanguage(code)) return null;
+  let pack = code === lang ? dict : packs.get(code);
+  if (!pack) {
+    const loaded = readPack(await loadLocaleText(code));
+    if (!loaded) return null;
+    packs.set(code, loaded);
+    pack = loaded;
+  }
+  return makeTranslator(code, pack, english);
+}
 
 export async function setLang(code: string): Promise<boolean> {
   if (!isUiLanguage(code)) return false;

@@ -275,6 +275,19 @@
             },
             "additionalProperties": false
           }
+        },
+        "summary": {
+          "type": "object",
+          "description": "Results shares only: the organizer's summary of what they selected, drafted from these results and edited by them. Plain text, shown as text.",
+          "required": ["text", "selected", "ballots", "at", "lang"],
+          "properties": {
+            "text": { "type": "string", "maxLength": 6000 },
+            "selected": { "type": "array", "maxItems": 100, "uniqueItems": true, "items": { "$ref": "#/definitions/id" } },
+            "ballots": { "type": "integer", "minimum": 0, "description": "Ballots in the result when the summary was saved." },
+            "at": { "type": "string", "format": "date-time" },
+            "lang": { "type": "string", "description": "The language the summary is written in (BCP 47)." }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

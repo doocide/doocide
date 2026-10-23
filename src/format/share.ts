@@ -67,11 +67,14 @@ function copyResult(r: GroupResult): GroupResult {
  * organizer's own scores swapped for the combined ones. No individual ballots, no names.
  */
 export function resultsEnvelope(d: Decision, result: GroupResult): Envelope {
+  // The organizer's selection summary goes along when they added it, field by field.
+  const s = d.group?.role === 'organizer' ? d.group.summary : undefined;
+  const summary = s && { text: s.text, selected: [...s.selected], ballots: s.ballots, at: s.at, lang: s.lang };
   return {
     doocide: FORMAT_VERSION,
     kind: 'decision',
     enc: 'none',
-    data: { ...shareableCopy(d, 'decision'), scores: [], pugh: [], groupResult: copyResult(result) },
+    data: { ...shareableCopy(d, 'decision'), scores: [], pugh: [], groupResult: { ...copyResult(result), ...(summary && { summary }) } },
   };
 }
 
@@ -276,6 +279,8 @@ export interface ResultsSummary {
   /** Left out: individual ballots (including the organizer's own scores) and private notes. */
   individualBallots: number;
   privateNotes: number;
+  /** The organizer's selection summary goes along. */
+  summary: boolean;
 }
 
 export function resultsSummary(d: Decision, result: GroupResult): ResultsSummary {
@@ -289,5 +294,6 @@ export function resultsSummary(d: Decision, result: GroupResult): ResultsSummary
     sharedNotes: data.notes.length,
     individualBallots: result.ballots,
     privateNotes: privateCount(d),
+    summary: Boolean(data.groupResult?.summary),
   };
 }

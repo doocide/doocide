@@ -17,6 +17,7 @@ import { Grid, type GroupCells, type VoterValue } from './Grid';
 import { hasChanges, type InviteChanges } from './invites';
 import { ResultsPanel } from './ResultsPanel';
 import { SettingsDialog } from './SettingsDialog';
+import { SummaryDialog } from './SummaryDialog';
 import { ShareDialog } from './ShareDialog';
 import { Icon, Menu, Segmented, useMediaQuery } from './ui';
 
@@ -252,7 +253,7 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
   const abstainedNames = d.options.filter((o) => skip.has(o.id)).map((o) => optionName(d, o, uiLang));
   const [tab, setTab] = useState<'score' | 'results' | 'setup'>(d.options.length && d.factors.length ? 'score' : 'setup');
   const [detail, setDetail] = useState<Target | null>(null);
-  const [dialog, setDialog] = useState<null | 'share' | 'invite' | 'settings'>(null);
+  const [dialog, setDialog] = useState<null | 'share' | 'invite' | 'settings' | 'summary'>(null);
   const pugh = d.settings.mode === 'pugh';
   const lock = { structure: structureLocked(d), weights: weightsLocked(d) };
 
@@ -287,8 +288,22 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
   const matrixProps = { d: shown, results, readOnly: readOnly || showGroup, uiLang, onEdit, onDetail: setDetail, lock, ...(group && { group }) };
   const modeLine = pugh ? t('mode.pugh', { steps: d.settings.pughSteps === 2 ? '−− − S + ++' : '− S +' }) : t('mode.weighted', { max: d.settings.scaleMax });
 
+  // What the organizer selected: their own saved summary, or the one that came with the results.
+  const ownSummary = role === 'organizer' ? d.group?.summary : undefined;
+  const sharedSummary = role !== 'organizer' && gv ? gv.result.summary : undefined;
+  const selectedIds = showGroup ? (ownSummary?.selected ?? sharedSummary?.selected ?? []) : [];
+  const organizerName = d.group?.role === 'participant' ? d.group.organizerName : undefined;
   const resultsPanel = (
-    <ResultsPanel d={shown} results={results} analysis={analysis} uiLang={uiLang} abstained={abstainedNames} {...(showGroup && { group: gv.result })} />
+    <ResultsPanel
+      d={shown}
+      results={results}
+      analysis={analysis}
+      uiLang={uiLang}
+      abstained={abstainedNames}
+      selected={selectedIds}
+      {...(showGroup && sharedSummary && { summary: { text: sharedSummary.text, lang: sharedSummary.lang, ...(organizerName && { from: organizerName }) } })}
+      {...(showGroup && { group: gv.result })}
+    />
   );
   const ballotsPanel =
     role === 'organizer' && !readOnly ? (
@@ -300,6 +315,7 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
         onInvite={() => setDialog('invite')}
         onOpenBallots={() => onOpenBallots?.()}
         onCollect={() => onCollectBallots?.()}
+        onDraftSummary={() => setDialog('summary')}
       />
     ) : null;
 
@@ -446,6 +462,7 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
         />
       )}
       {dialog === 'settings' && <SettingsDialog d={d} uiLang={uiLang} onEdit={onEdit} onClose={() => setDialog(null)} />}
+      {dialog === 'summary' && <SummaryDialog d={d} onEdit={onEdit} onClose={() => setDialog(null)} />}
     </div>
   );
 }

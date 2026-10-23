@@ -200,6 +200,8 @@ export interface Group {
   lastInviteShape?: string;
   /** Organizer: when results last went to the shared folder. */
   publishedAt?: string;
+  /** Organizer: their saved selection summary, which results shares carry. `compare`: it compares with the options left out. */
+  summary?: SelectionSummary & { compare: boolean };
   /**
    * Organizer: how the results file's passphrase becomes its key. The salt stays the same from one
    * publish to the next (each gets a fresh IV), so people who entered the passphrase once can open
@@ -261,6 +263,21 @@ export interface GroupResult {
   cells: CellResult[];
   /** Combined importance, when everyone sets it. */
   weights?: WeightResult[];
+  /** Results shares only: the organizer's summary of what they selected, when they added it. */
+  summary?: SelectionSummary;
+}
+
+/** An organizer's summary of a selection: drafted from the group's results, then edited by them. */
+export interface SelectionSummary {
+  /** Plain text, as the organizer last left it. Shown as text, never formatted. */
+  text: string;
+  /** The options selected. */
+  selected: string[];
+  /** Ballots in the result when it was saved, so newer ballots can be noticed. */
+  ballots: number;
+  at: string;
+  /** The language it's written in. */
+  lang: string;
 }
 
 /** What a participant receives: the decision's structure and the rules of the group. */

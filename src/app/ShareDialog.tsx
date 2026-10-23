@@ -401,6 +401,7 @@ function OwnerShare({ d, result, initial, onEdit, onClose }: Props) {
       t('share.countFacts', { count: s.facts }),
       t('share.combined', { count: s.ballots }),
       t('share.countSharedNotes', { count: s.sharedNotes }),
+      ...(s.summary ? [t('share.summaryIncluded')] : []),
     ];
     leftOut = [t('share.individualBallots', { count: s.individualBallots }), t('share.privateNotesStay', { count: s.privateNotes })];
     help = t('share.resultsHelp');

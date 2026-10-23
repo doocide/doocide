@@ -28,9 +28,11 @@ interface Props {
   onOpenBallots: () => void;
   /** Check the shared folder for new ballots. */
   onCollect: () => void;
+  /** Draft a summary of what was selected. */
+  onDraftSummary: () => void;
 }
 
-export function BallotsPanel({ d, voters, result, onEdit, onInvite, onOpenBallots, onCollect }: Props) {
+export function BallotsPanel({ d, voters, result, onEdit, onInvite, onOpenBallots, onCollect, onDraftSummary }: Props) {
   const ask = useConfirm();
   const toast = useToast();
   /** Who counts changed: with "after each approval", the results in the shared folder follow. */
@@ -121,7 +123,19 @@ export function BallotsPanel({ d, voters, result, onEdit, onInvite, onOpenBallot
           <Icon name="file" size={18} />
           {t('ballots.open')}
         </button>
+        {result && (
+          <button className="button" onClick={onDraftSummary}>
+            <Icon name="note" size={18} />
+            {t('summary.open')}
+          </button>
+        )}
       </div>
+      {g.summary && (
+        <p className="muted small">
+          {t('summary.inResults', { count: g.summary.ballots })}
+          {result && result.ballots !== g.summary.ballots && ` ${t('summary.staleNow', { count: result.ballots })}`}
+        </p>
+      )}
       {/* Right under the buttons, so it shows without scrolling far: the folder is how many groups collect. */}
       <SharedFolder d={d} result={result} onEdit={onEdit} onCollect={onCollect} />
       <p className="muted small">

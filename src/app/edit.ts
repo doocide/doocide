@@ -5,7 +5,7 @@ import { newId } from '../format/ids';
 import { LIMITS } from '../format/limits';
 import { checkLink, cleanText } from '../format/sanitize';
 import { signatureAllows } from '../engine/ballots';
-import type { Decision, GroupResult, GroupSettings, Invite, Kdf, Note, ReceivedBallot, Score, Settings, StoredBallot, Visibility } from '../format/types';
+import type { Decision, GroupResult, GroupSettings, Invite, Kdf, Note, ReceivedBallot, Score, SelectionSummary, Settings, StoredBallot, Visibility } from '../format/types';
 import { WEIGHT_MAX, WEIGHT_MIN } from '../format/types';
 import { cleanFolderResults, matchBallot } from '../format/validate';
 
@@ -312,6 +312,19 @@ export function withoutAbstained(d: Decision, skip: Set<string>): Decision {
   return { ...d, options: d.options.filter((o) => !skip.has(o.id)), scores: d.scores.filter(keep), pugh: d.pugh.filter(keep), facts: d.facts.filter(keep) };
 }
 
+/**
+ * Organizer: save their selection summary (results shares then carry it), or take it out (null). The
+ * last-changed time moves on, so participants checking the shared folder see the results as newer.
+ */
+export const setSummary = (summary: (SelectionSummary & { compare: boolean }) | null): Edit => (d) => {
+  const g = d.group;
+  if (g?.role !== 'organizer') return d;
+  if (!summary && !g.summary) return d;
+  const { summary: _old, ...rest } = g;
+  const text = summary && cleanText(summary.text, LIMITS.text.summary, true);
+  return touch({ ...d, group: summary && text ? { ...rest, summary: { ...summary, text } } : rest });
+};
+
 /** Organizer: results just went to the shared folder. */
 export const markPublished: Edit = (d) =>
   d.group?.role === 'organizer' ? { ...d, group: { ...d.group, publishedAt: new Date().toISOString() } } : d;
@@ -322,10 +335,12 @@ function fitResult(result: GroupResult, d: Pick<Decision, 'options' | 'factors' 
   const factors = new Set(d.factors.map((f) => f.id));
   const baseline = d.settings.mode === 'pugh' ? d.settings.baselineId : undefined;
   const weights = result.weights?.filter((w) => factors.has(w.factorId));
+  const summary = result.summary && { ...result.summary, selected: result.summary.selected.filter((id) => options.has(id)) };
   return {
     ballots: result.ballots,
     cells: result.cells.filter((c) => options.has(c.optionId) && factors.has(c.factorId) && c.optionId !== baseline),
     ...(weights?.length && { weights }),
+    ...(summary && { summary }),
   };
 }
 
