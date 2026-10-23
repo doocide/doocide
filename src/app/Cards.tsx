@@ -6,6 +6,7 @@ import { cellKey, cellValues } from '../engine';
 import type { Decision, Factor, Option } from '../format/types';
 import { formatNumber, t } from '../i18n';
 import { NameField, formatValue, useFocusNew } from './controls';
+import { useSwipe } from './swipe';
 import { abstainedOptions } from '../format/share';
 import { addFactor, addOption, renameFactor, renameOption, setRating, setScore, setWeight, tidyNames } from './edit';
 import { ExternalLink } from './ExternalLink';
@@ -102,6 +103,23 @@ function useLookups(d: Decision): Lookups {
   return { values, facts, notes, abstain };
 }
 
+/**
+ * One page at a time: the index, a move that remembers which way the page turned (so the new one slides
+ * in from that side), and swiping between pages.
+ */
+function usePaging(total: number) {
+  const [index, setIndex] = useState(0);
+  const [enter, setEnter] = useState<'next' | 'previous' | null>(null);
+  const i = Math.min(index, Math.max(0, total - 1));
+  const move = (to: number) => {
+    if (to < 0 || to >= total || to === i) return;
+    setEnter(to > i ? 'next' : 'previous');
+    setIndex(to);
+  };
+  const swipe = useSwipe({ onNext: i < total - 1 ? () => move(i + 1) : undefined, onPrevious: i > 0 ? () => move(i - 1) : undefined });
+  return { i, move, swipe, pageClass: enter ? `card-page enter-${enter}` : 'card-page' };
+}
+
 function Pager({ i, total, label, previous, next, onMove }: { i: number; total: number; label: string; previous: string; next: string; onMove: (i: number) => void }) {
   return (
     <nav className="pager" aria-label={label}>
@@ -121,9 +139,8 @@ function Pager({ i, total, label, previous, next, onMove }: { i: number; total: 
 /** One factor at a time: its importance on a slider, then every option. */
 function FactorCards(props: MatrixProps) {
   const { d, readOnly, uiLang, onEdit, lock, group } = props;
-  const [index, setIndex] = useState(0);
   const lookups = useLookups(d);
-  const i = Math.min(index, Math.max(0, d.factors.length - 1));
+  const { i, move, swipe, pageClass } = usePaging(d.factors.length);
   const f = d.factors[i];
 
   if (!f || d.options.length === 0) return <p className="empty-hint">{t('cards.empty')}</p>;
@@ -132,44 +149,46 @@ function FactorCards(props: MatrixProps) {
   const guide = factorGuide(d, f, uiLang);
 
   return (
-    <div className="cards">
-      <section className="factor-card">
-        <div className="eyebrow">{t('cards.factorOf', { n: i + 1, total: d.factors.length })}</div>
-        <h2 dir="auto" lang={d.lang}>
-          {name}
-        </h2>
-        {guide && (
-          <p className="guide" dir="auto" lang={d.lang}>
-            {guide}
-          </p>
-        )}
-        <label className="slider-row">
-          <span>{t('cards.leastImportant')}</span>
-          <input
-            type="range"
-            min={1}
-            max={5}
-            step={1}
-            value={Math.round(f.weight)}
-            disabled={readOnly || Boolean(lock?.weights)}
-            aria-label={t('grid.importanceOf', { name })}
-            onChange={(e) => onEdit(setWeight(f.id, Number(e.target.value)))}
-          />
-          <span>{t('cards.veryImportant')}</span>
-        </label>
-        <div className="weight-name">
-          {t(`weight.${Math.round(f.weight)}`)}
-          {group?.weights?.has(f.id) && <span className="muted small"> · {t('group.weightAverage', { value: formatNumber(f.weight, 1) })}</span>}
-        </div>
-      </section>
+    <div className="cards" {...swipe.handlers}>
+      <div key={i} ref={swipe.page} className={pageClass}>
+        <section className="factor-card">
+          <div className="eyebrow">{t('cards.factorOf', { n: i + 1, total: d.factors.length })}</div>
+          <h2 dir="auto" lang={d.lang}>
+            {name}
+          </h2>
+          {guide && (
+            <p className="guide" dir="auto" lang={d.lang}>
+              {guide}
+            </p>
+          )}
+          <label className="slider-row">
+            <span>{t('cards.leastImportant')}</span>
+            <input
+              type="range"
+              min={1}
+              max={5}
+              step={1}
+              value={Math.round(f.weight)}
+              disabled={readOnly || Boolean(lock?.weights)}
+              aria-label={t('grid.importanceOf', { name })}
+              onChange={(e) => onEdit(setWeight(f.id, Number(e.target.value)))}
+            />
+            <span>{t('cards.veryImportant')}</span>
+          </label>
+          <div className="weight-name">
+            {t(`weight.${Math.round(f.weight)}`)}
+            {group?.weights?.has(f.id) && <span className="muted small"> · {t('group.weightAverage', { value: formatNumber(f.weight, 1) })}</span>}
+          </div>
+        </section>
 
-      <ul className="option-sliders">
-        {d.options.map((o) => (
-          <ScoreRow key={o.id} p={{ ...props, ...lookups }} o={o} f={f} name={optionName(d, o, uiLang)} />
-        ))}
-      </ul>
+        <ul className="option-sliders">
+          {d.options.map((o) => (
+            <ScoreRow key={o.id} p={{ ...props, ...lookups }} o={o} f={f} name={optionName(d, o, uiLang)} />
+          ))}
+        </ul>
+      </div>
 
-      <Pager i={i} total={d.factors.length} label={t('cards.pager')} previous={t('cards.previous')} next={t('cards.next')} onMove={setIndex} />
+      <Pager i={i} total={d.factors.length} label={t('cards.pager')} previous={t('cards.previous')} next={t('cards.next')} onMove={move} />
     </div>
   );
 }
@@ -177,9 +196,8 @@ function FactorCards(props: MatrixProps) {
 /** One option at a time: its rank and score, then every factor with its importance. */
 function OptionCards(props: MatrixProps) {
   const { d, results, readOnly, uiLang, onEdit, lock, group } = props;
-  const [index, setIndex] = useState(0);
   const lookups = useLookups(d);
-  const i = Math.min(index, Math.max(0, d.options.length - 1));
+  const { i, move, swipe, pageClass } = usePaging(d.options.length);
   const o = d.options[i];
 
   if (!o || d.factors.length === 0) return <p className="empty-hint">{t('cards.empty')}</p>;
@@ -189,49 +207,51 @@ function OptionCards(props: MatrixProps) {
   const ranked = r && lookups.values.size > 0 && !results.needsBaseline;
 
   return (
-    <div className="cards">
-      <section className={win ? 'factor-card option-card win' : 'factor-card option-card'}>
-        <div className="eyebrow">{t('cards.optionOf', { n: i + 1, total: d.options.length })}</div>
-        <h2 dir="auto" lang={d.lang}>
-          {optionName(d, o, uiLang)}
-        </h2>
-        {o.description && (
-          <p className="guide" dir="auto" lang={d.lang}>
-            {o.description}
-          </p>
-        )}
-        {ranked && (
-          <div className="weight-name">
-            #{r.rank} · {scoreLabel(d, results, o.id)} {win && <Icon name="trophy" size={16} />}
-          </div>
-        )}
-      </section>
-
-      <ul className="option-sliders">
-        {d.factors.map((f) => {
-          const name = factorName(d, f, uiLang);
-          const guide = factorGuide(d, f, uiLang);
-          const extra = (
-            <div className="factor-extra">
-              {guide && (
-                <div className="guide" dir="auto" lang={d.lang}>
-                  {guide}
-                </div>
-              )}
-              <Stars
-                value={Math.round(f.weight)}
-                readOnly={readOnly || Boolean(lock?.weights)}
-                label={t('grid.importanceOf', { name })}
-                onChange={(w) => onEdit(setWeight(f.id, w))}
-              />
-              {group?.weights?.has(f.id) && <span className="muted small"> {t('group.weightAverage', { value: formatNumber(f.weight, 1) })}</span>}
+    <div className="cards" {...swipe.handlers}>
+      <div key={i} ref={swipe.page} className={pageClass}>
+        <section className={win ? 'factor-card option-card win' : 'factor-card option-card'}>
+          <div className="eyebrow">{t('cards.optionOf', { n: i + 1, total: d.options.length })}</div>
+          <h2 dir="auto" lang={d.lang}>
+            {optionName(d, o, uiLang)}
+          </h2>
+          {o.description && (
+            <p className="guide" dir="auto" lang={d.lang}>
+              {o.description}
+            </p>
+          )}
+          {ranked && (
+            <div className="weight-name">
+              #{r.rank} · {scoreLabel(d, results, o.id)} {win && <Icon name="trophy" size={16} />}
             </div>
-          );
-          return <ScoreRow key={f.id} p={{ ...props, ...lookups }} o={o} f={f} name={name} extra={extra} />;
-        })}
-      </ul>
+          )}
+        </section>
 
-      <Pager i={i} total={d.options.length} label={t('cards.optionPager')} previous={t('cards.previousOption')} next={t('cards.nextOption')} onMove={setIndex} />
+        <ul className="option-sliders">
+          {d.factors.map((f) => {
+            const name = factorName(d, f, uiLang);
+            const guide = factorGuide(d, f, uiLang);
+            const extra = (
+              <div className="factor-extra">
+                {guide && (
+                  <div className="guide" dir="auto" lang={d.lang}>
+                    {guide}
+                  </div>
+                )}
+                <Stars
+                  value={Math.round(f.weight)}
+                  readOnly={readOnly || Boolean(lock?.weights)}
+                  label={t('grid.importanceOf', { name })}
+                  onChange={(w) => onEdit(setWeight(f.id, w))}
+                />
+                {group?.weights?.has(f.id) && <span className="muted small"> {t('group.weightAverage', { value: formatNumber(f.weight, 1) })}</span>}
+              </div>
+            );
+            return <ScoreRow key={f.id} p={{ ...props, ...lookups }} o={o} f={f} name={name} extra={extra} />;
+          })}
+        </ul>
+      </div>
+
+      <Pager i={i} total={d.options.length} label={t('cards.optionPager')} previous={t('cards.previousOption')} next={t('cards.nextOption')} onMove={move} />
     </div>
   );
 }

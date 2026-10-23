@@ -2429,3 +2429,61 @@ input[type='range'].unset {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Phones: one page at a time. The page follows a sideways swipe; vertical scrolling and zoom stay the browser's. */
+.card-page {
+  touch-action: pan-y pinch-zoom;
+}
+
+.card-page.enter-next {
+  animation: page-in-next 180ms ease-out;
+}
+
+.card-page.enter-previous {
+  animation: page-in-previous 180ms ease-out;
+}
+
+[dir='rtl'] .card-page.enter-next {
+  animation-name: page-in-previous;
+}
+
+[dir='rtl'] .card-page.enter-previous {
+  animation-name: page-in-next;
+}
+
+@keyframes page-in-next {
+  from {
+    transform: translateX(18%);
+    opacity: 0.3;
+  }
+}
+
+@keyframes page-in-previous {
+  from {
+    transform: translateX(-18%);
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-page.enter-next,
+  .card-page.enter-previous {
+    animation: none;
+  }
+}
+
+/*
+ * Touch screens: phones zoom into a text field whose text is under 16px the moment it's tapped. At
+ * 16px they don't, and people can still pinch to zoom. (A viewport with maximum-scale=1 would stop the
+ * jump too, but on some phones it also blocks pinch-zoom, which people who need larger text rely on.)
+ * Element selectors, so fields styled larger (the title, the scores) keep their own size.
+ */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea,
+  .link-box,
+  .summary-text {
+    font-size: 16px;
+  }
+}
