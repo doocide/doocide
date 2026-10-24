@@ -11,6 +11,7 @@ import { abstainedOptions } from '../format/share';
 import { ballotSealed, confirmOrganizer, scoringLocked, setRows, setTitle, structureLocked, tidyNames, weightsLocked, withoutAbstained, type Edit, type Target } from './edit';
 import { downloadText, safeFileName } from './files';
 import { optionName } from './labels';
+import { PrivacyBadge } from './PrivacyBadge';
 import { canUseFolders, resultsFileName } from './folder';
 import { useFolder } from './SharedFolder';
 import { Grid, type GroupCells, type VoterValue } from './Grid';
@@ -21,8 +22,12 @@ import { SummaryDialog } from './SummaryDialog';
 import { ShareDialog } from './ShareDialog';
 import { Icon, Menu, Segmented, useMediaQuery } from './ui';
 
+/** Where a preview came from: a link, a file, or one of the app's own templates. */
+export type IncomingSource = 'link' | 'file' | 'builtin';
+
 export interface Incoming {
   kind: Exclude<Kind, 'ballot'>;
+  source: IncomingSource;
   /** An invite to score: the group's rules, who sent it (and the key that signed it), and whether this person already started. */
   invite?: {
     settings: GroupSettings;
@@ -337,6 +342,8 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
           onChange={(e) => onEdit(setTitle(e.target.value))}
           onBlur={() => onEdit(tidyNames)}
         />
+        {/* The app's own templates are this site's content: no badge until it's saved. */}
+        {incoming?.source !== 'builtin' && <PrivacyBadge where={incoming ? incoming.source : 'saved'} />}
         {!readOnly && (
           <>
             {role !== 'participant' && (

@@ -7,7 +7,7 @@ import type { AnyEnvelope, Decision, Envelope, Invite, InviteEnvelope, Passphras
 import { FormatError, parseAnyEnvelopeText, parseEnvelopeText, parseIncomingText, type FormatErrorCode, type Incoming } from '../format/validate';
 import { getLang, t, useLang } from '../i18n';
 import { BallotReview } from './BallotReview';
-import { DecisionView } from './DecisionView';
+import { DecisionView, type IncomingSource } from './DecisionView';
 import { addBallots, applyFolderResults, isNewerResult, refreshFromInvite, type Edit } from './edit';
 import { FILE_EXTENSION, pickFileText, pickFilesText } from './files';
 import { canUseFolders, connectFolder, forgetFolder, inviteFileName, pickFolderBallots, readBallots, readNamed, rememberedFolder, resultsFileName } from './folder';
@@ -44,9 +44,10 @@ type ErrorCode = FormatErrorCode | 'template-missing' | 'ballot-unknown' | 'bad-
 type View =
   | { name: 'library' }
   | { name: 'decision'; id: string }
-  | { name: 'incoming'; env: Envelope }
+  /** `source`: where it came from; a built-in template is the app's own. */
+  | { name: 'incoming'; env: Envelope; source: IncomingSource }
   /** `signed`: the invite's signature checked out. */
-  | { name: 'incoming-invite'; env: InviteEnvelope; signed: boolean }
+  | { name: 'incoming-invite'; env: InviteEnvelope; signed: boolean; source: 'link' | 'file' }
   | { name: 'review'; decisionId: string; ballots: ReceivedBallot[]; skipped: number }
   /** A link or file locked with a passphrase, waiting for it. Backups never come from links. */
   | { name: 'locked-share'; box: PassphraseEnvelope; source: 'link' | 'file' }
@@ -127,7 +128,7 @@ export function App() {
    * Where an incoming envelope opens. Signatures are checked here, before anything is shown. Nothing is
    * saved: every path ends at a screen with a button.
    */
-  const viewFor = useCallback(async (env: AnyEnvelope): Promise<View> => {
+  const viewFor = useCallback(async (env: AnyEnvelope, source: 'link' | 'file'): Promise<View> => {
     if (env.kind === 'ballot') {
       const d = findOrganizer(decisionsRef.current.values(), env.data);
       if (!d) return { name: 'error', code: 'ballot-unknown' };
@@ -136,9 +137,9 @@ export function App() {
     if (env.kind === 'invite') {
       const signature = await checkInvite(env.data);
       if (signature === 'invalid') return { name: 'error', code: 'bad-signature' };
-      return { name: 'incoming-invite', env, signed: signature === 'valid' };
+      return { name: 'incoming-invite', env, signed: signature === 'valid', source };
     }
-    return { name: 'incoming', env };
+    return { name: 'incoming', env, source };
   }, []);
 
   /**
@@ -147,7 +148,7 @@ export function App() {
    */
   const openIncoming = useCallback(
     async (incoming: Incoming, source: 'link' | 'file'): Promise<View> => {
-      if (incoming.type === 'plain') return viewFor(incoming.env);
+      if (incoming.type === 'plain') return viewFor(incoming.env, source);
       const { box } = incoming;
       if (box.enc === 'passphrase') return { name: 'locked-share', box, source };
       const organizers = [...decisionsRef.current.values()].filter((d) => d.group?.role === 'organizer').map((d) => d.id);
@@ -155,7 +156,7 @@ export function App() {
       if (!found) return { name: 'error', code: 'sealed-elsewhere' };
       const env = parseAnyEnvelopeText(await openSealed(box, found.sealer));
       if (env.kind !== 'ballot') return { name: 'error', code: 'invalid' };
-      return viewFor(env);
+      return viewFor(env, source);
     },
     [viewFor],
   );
@@ -173,7 +174,7 @@ export function App() {
         if (!text) return setView({ name: 'error', code: 'template-missing' });
         const env = parseEnvelopeText(text);
         if (env.kind !== 'template') throw new FormatError('invalid');
-        setView({ name: 'incoming', env });
+        setView({ name: 'incoming', env, source: 'builtin' });
       } else setView({ name: 'error', code: 'bad-data' });
     } catch (e) {
       setView({ name: 'error', code: errorCode(e) });
@@ -357,7 +358,7 @@ export function App() {
       case 'invite':
         // A newer invite opens on the usual screen, which lists what changed. The same or an older one needs nothing.
         if (g.inviteVersion && update.env.data.decision.updatedAt <= g.inviteVersion) return t('updates.upToDate');
-        go(await viewFor(update.env));
+        go(await viewFor(update.env, 'file'));
         return null;
       case 'locked':
         setUnlocking({ id, box: update.box });
@@ -414,7 +415,7 @@ export function App() {
     try {
       const text = await loadTemplateText(name);
       if (!text) return setView({ name: 'error', code: 'template-missing' });
-      go({ name: 'incoming', env: parseEnvelopeText(text) });
+      go({ name: 'incoming', env: parseEnvelopeText(text), source: 'builtin' });
     } catch (e) {
       setView({ name: 'error', code: errorCode(e) });
     }
@@ -432,7 +433,7 @@ export function App() {
           try {
             const env = parseAnyEnvelopeText(inner);
             if (source === 'link' && env.kind === 'backup') throw new FormatError('invalid', 'Backups cannot travel in links');
-            setView(await viewFor(env));
+            setView(await viewFor(env, source));
           } catch (e) {
             setView({ name: 'error', code: errorCode(e) });
           }
@@ -477,7 +478,7 @@ export function App() {
 
   if (view.name === 'incoming-invite') {
     const invite = view.env.data;
-    const { signed } = view;
+    const { signed, source } = view;
     const joined = findJoined(decisions.values(), invite);
     // Someone who already joined: an older invite changes nothing; a newer one says what it changes.
     const older = joined ? isOlderInvite(joined, invite) : false;
@@ -487,6 +488,7 @@ export function App() {
         d={{ ...invite.decision, ...(invite.result && { groupResult: invite.result }) }}
         incoming={{
           kind: 'invite',
+          source,
           invite: {
             settings: invite.settings,
             ...(invite.organizerName && { organizerName: invite.organizerName }),
@@ -521,12 +523,13 @@ export function App() {
   }
 
   if (view.name === 'incoming') {
-    const { env } = view;
+    const { env, source } = view;
     return (
       <DecisionView
         d={env.data}
         incoming={{
           kind: env.kind,
+          source,
           onSave: () => {
             add(adopt(env.data, getLang(), env.kind === 'backup'));
             toast(t('incoming.saved'));

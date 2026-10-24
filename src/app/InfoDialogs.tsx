@@ -30,7 +30,7 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
           {REPO_URL.replace('https://', '')}
         </a>
       </p>
-      <p className="muted small">{t('about.version', { version: '0.5.6' })}</p>
+      <p className="muted small">{t('about.version', { version: '0.5.7' })}</p>
     </Dialog>
   );
 }

@@ -3,7 +3,7 @@
 // Options as rows: each option row starts with its rank, name and summaries; factors are columns,
 // headed by their name and importance. Headers stay pinned while scrolling either way.
 
-import { useMemo, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import { useMemo, useRef, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { cellKey, cellValues, spreadLevel, type Results } from '../engine';
 import type { CellResult, Decision, Fact, Factor, Option, WeightResult } from '../format/types';
 import { formatNumber, t } from '../i18n';
@@ -12,6 +12,7 @@ import { abstainedOptions } from '../format/share';
 import { addFactor, addOption, renameFactor, renameOption, setRating, setScore, setWeight, tidyNames, type Edit, type Target } from './edit';
 import { ExternalLink } from './ExternalLink';
 import { factorGuide, factorName, optionName } from './labels';
+import { nameColumnWidth, useNameRoom } from './nameWidth';
 import { Icon, Stars } from './ui';
 
 /** What can't be changed even when the decision is editable: a participant's copy belongs to the organizer. */
@@ -297,13 +298,26 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
   );
 }
 
-/** An option's column head (factors as rows). Its description shows the moment the pointer is over it. */
-function OptionHead({ c, o }: { c: Ctx; o: Option }) {
+/** A column's width when its name needs more than the usual width. */
+const columnWidth = (width: number | undefined): CSSProperties | undefined => (width === undefined ? undefined : { width, minWidth: width });
+
+/** The name cell under a rank cell: the same column, one header row down. */
+function nameCellBelow(hovered: HTMLElement): Element {
+  const cell = hovered as HTMLTableCellElement;
+  const row = cell.parentElement?.nextElementSibling as HTMLTableRowElement | null;
+  return row?.cells[cell.cellIndex] ?? hovered;
+}
+
+/**
+ * The top of an option's column (factors as rows): its rank and three summary rows. The name has the
+ * header row below, so the table stretches every name cell to the tallest name. Pointing here shows
+ * the description under the name, as pointing at the name does.
+ */
+function OptionHead({ c, o, width }: { c: Ctx; o: Option; width: number | undefined }) {
   const s = optionSummary(c, o);
-  const hover = useHoverTip(o.description, c.d.lang);
-  const lit = useOptionHovered(c, o.id);
+  const hover = useHoverTip(o.description, c.d.lang, nameCellBelow);
   return (
-    <th scope="col" className={['col-option', s.win ? 'win' : '', s.baseline ? 'baseline' : '', lit ? 'hover' : ''].join(' ')} style={s.style} {...hover.props}>
+    <th scope="col" className={['col-option', s.win ? 'win' : '', s.baseline ? 'baseline' : ''].join(' ')} style={{ ...s.style, ...columnWidth(width) }} {...hover.props}>
       <div className="opt-head">
         <div className="opt-big" title={s.win ? t('results.winner') : undefined}>
           {s.rank}
@@ -312,9 +326,22 @@ function OptionHead({ c, o }: { c: Ctx; o: Option }) {
         <div className="opt-row row-blue">{s.rows[0]}</div>
         <div className="opt-row row-green">{s.rows[1]}</div>
         <div className="opt-row row-gold">{s.rows[2]}</div>
-        <OptionStrip c={c} o={o} />
-        {c.abstain.has(o.id) && <div className="abstain-badge">{t('abstain.cell')}</div>}
       </div>
+      {hover.tip}
+    </th>
+  );
+}
+
+/** An option's name cell (factors as rows), colored like its strip. Its description shows the moment the pointer is over it. */
+function OptionNameHead({ c, o, width }: { c: Ctx; o: Option; width: number | undefined }) {
+  const win = c.results.winnerId === o.id;
+  const baseline = c.pugh && c.d.settings.baselineId === o.id;
+  const hover = useHoverTip(o.description, c.d.lang);
+  const lit = useOptionHovered(c, o.id);
+  return (
+    <th scope="col" className={['col-option name-cell', win ? 'win' : '', baseline ? 'baseline' : '', lit ? 'hover' : ''].join(' ')} style={columnWidth(width)} {...hover.props}>
+      <OptionStrip c={c} o={o} />
+      {c.abstain.has(o.id) && <div className="abstain-badge">{t('abstain.cell')}</div>}
       {hover.tip}
     </th>
   );
@@ -348,24 +375,40 @@ function OptionRowHead({ c, o }: { c: Ctx; o: Option }) {
 /** Factors as rows, options as columns: the StudentGrader layout. */
 function FactorRows({ c }: { c: Ctx }) {
   const { d } = c;
+  const table = useRef<HTMLTableElement>(null);
+  const room = useNameRoom(table, '--option-w', '--option-max-w', d.options.length > 0);
+  // Names can't hold line breaks, so one string keys them all.
+  const names = d.options.map((o) => optionName(d, o, c.uiLang)).join('\n');
+  const widths = useMemo(() => (room ? names.split('\n').map((name) => nameColumnWidth(name, room)) : []), [room, names]);
+  const add = !c.fixed && (
+    <th className="col-add" scope="col" rowSpan={d.options.length > 0 ? 2 : 1}>
+      <AddButton label={t('grid.addOption')} onClick={c.addOption} />
+    </th>
+  );
   return (
-    <table className="grid">
+    <table className="grid" ref={table}>
       <thead>
-        <tr>
+        {d.options.length > 0 && (
+          <tr className="rank-row">
+            <td className="col-factor corner" aria-hidden="true" />
+            <td className="col-weight corner" aria-hidden="true" />
+            {d.options.map((o, i) => (
+              <OptionHead key={o.id} c={c} o={o} width={widths[i]} />
+            ))}
+            {add}
+          </tr>
+        )}
+        <tr className="name-row">
           <th className="col-factor corner" scope="col">
             <div className="head-label">{t('grid.factors')}</div>
           </th>
           <th className="col-weight corner" scope="col">
             <div className="head-label">{t('grid.importance')}</div>
           </th>
-          {d.options.map((o) => (
-            <OptionHead key={o.id} c={c} o={o} />
+          {d.options.map((o, i) => (
+            <OptionNameHead key={o.id} c={c} o={o} width={widths[i]} />
           ))}
-          {!c.fixed && (
-            <th className="col-add" scope="col">
-              <AddButton label={t('grid.addOption')} onClick={c.addOption} />
-            </th>
-          )}
+          {d.options.length === 0 && add}
         </tr>
       </thead>
       <tbody>
@@ -399,8 +442,13 @@ function FactorRows({ c }: { c: Ctx }) {
 /** Options as rows, factors as columns: handy when there are many options and few factors. */
 function OptionRows({ c }: { c: Ctx }) {
   const { d } = c;
+  const table = useRef<HTMLTableElement>(null);
+  const room = useNameRoom(table, '--row-option-w', '--row-option-max-w', d.options.length > 0);
+  const names = d.options.map((o) => optionName(d, o, c.uiLang)).join('\n');
+  // One column holds every name, so the longest decides its width.
+  const width = useMemo(() => (room ? Math.max(room.base, ...names.split('\n').map((name) => nameColumnWidth(name, room))) : undefined), [room, names]);
   return (
-    <table className="grid option-rows">
+    <table className="grid option-rows" ref={table} style={width === undefined ? undefined : ({ '--row-name-w': `${width}px` } as CSSProperties)}>
       <thead>
         <tr>
           <th className="row-option corner" scope="col">

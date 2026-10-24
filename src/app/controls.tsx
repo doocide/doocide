@@ -40,17 +40,20 @@ export function NameField({
   onBlur: () => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  // The width the field was last fitted at.
+  const fitted = useRef(0);
   useLayoutEffect(() => {
-    if (ref.current) fit(ref.current);
+    if (!ref.current) return;
+    fit(ref.current);
+    fitted.current = ref.current.clientWidth;
   }, [value, placeholder]);
-  // Columns can get wider or narrower (window size, other names); refit when the width changes.
+  // Columns can get wider or narrower (window size, long names); refit when the width changes.
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
-    let width = el.clientWidth;
     const observer = new ResizeObserver(() => {
-      if (el.clientWidth === width) return;
-      width = el.clientWidth;
+      if (el.clientWidth === fitted.current) return;
+      fitted.current = el.clientWidth;
       fit(el);
     });
     observer.observe(el);
@@ -190,9 +193,14 @@ const TIP_WIDTH = 320;
 /**
  * A tip that shows the moment the pointer is over an element and goes as soon as it leaves: no
  * delay, unlike the browser's own. Plain text only (it may be someone else's), drawn on top of the
- * page so a scrolling table can't cut it off. Nothing is shown when there's no text.
+ * page so a scrolling table can't cut it off. Nothing is shown when there's no text. `anchor` places
+ * it by another element than the one hovered.
  */
-export function useHoverTip(text: string | undefined, lang?: string): { props: { onMouseEnter?: (e: MouseEvent<HTMLElement>) => void; onMouseLeave?: () => void; 'aria-describedby'?: string }; tip: ReactNode } {
+export function useHoverTip(
+  text: string | undefined,
+  lang?: string,
+  anchor?: (hovered: HTMLElement) => Element,
+): { props: { onMouseEnter?: (e: MouseEvent<HTMLElement>) => void; onMouseLeave?: () => void; 'aria-describedby'?: string }; tip: ReactNode } {
   const id = useId();
   const [spot, setSpot] = useState<TipSpot | null>(null);
   const shown = Boolean(text && spot);
@@ -212,7 +220,7 @@ export function useHoverTip(text: string | undefined, lang?: string): { props: {
   if (!text) return { props: {}, tip: null };
   const props = {
     onMouseEnter: (e: MouseEvent<HTMLElement>) => {
-      const r = e.currentTarget.getBoundingClientRect();
+      const r = (anchor ? anchor(e.currentTarget) : e.currentTarget).getBoundingClientRect();
       const left = Math.max(8, Math.min(r.left, window.innerWidth - Math.min(TIP_WIDTH, window.innerWidth - 16) - 8));
       setSpot(window.innerHeight - r.bottom >= TIP_ROOM ? { left, top: r.bottom + 4 } : { left, bottom: window.innerHeight - r.top + 4 });
     },

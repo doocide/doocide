@@ -61,8 +61,13 @@
   --radius: 10px;
   --factor-w: 230px;
   --weight-w: 116px;
+  /* Option columns and the options' name column: the usual width, and the most a long name widens them to. */
   --option-w: 172px;
+  --option-max-w: 260px;
   --row-option-w: 250px;
+  --row-option-max-w: 340px;
+  /* The rank and summary rows above the option names: 62px for the rank, 32px for each summary. */
+  --rank-head-h: 158px;
   --font: system-ui, sans-serif;
   color-scheme: light;
 }
@@ -437,6 +442,33 @@ a:focus-visible {
   z-index: 20;
 }
 
+/* Where this decision lives (on this device, or in a link or file): a calm badge, never a warning. */
+.privacy-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 12px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.privacy-badge .icon {
+  color: var(--row-green-hi);
+}
+
+.privacy-badge:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
 .logo {
   display: inline-flex;
   align-items: center;
@@ -777,7 +809,8 @@ a:focus-visible {
   padding: 0;
 }
 
-.grid thead th {
+.grid thead th,
+.grid thead td {
   position: sticky;
   top: 0;
   z-index: 3;
@@ -844,20 +877,23 @@ a:focus-visible {
   width: var(--option-w);
 }
 
-/* The header fills its cell (the 1px height lets 100% work in a table), so when a name wraps the
-   summary rows still line up across options and every name strip reaches the same bottom. */
-.grid thead .col-option {
-  height: 1px;
+/* Factors as rows, the head has two rows: ranks and summaries at a fixed height, then the names, which
+   pin right under them. The table stretches every name cell to the tallest name, so the summaries line
+   up and the name strips share a bottom edge. (A height of 100% inside a cell can't do that: Safari
+   sizes it by the cell's last height and never lets a taller name grow the row.) */
+.grid thead .rank-row > .col-option,
+.grid thead .rank-row > .corner {
+  height: var(--rank-head-h);
+  border-bottom: 0;
+}
+
+.grid thead .rank-row + .name-row > * {
+  top: var(--rank-head-h);
 }
 
 .opt-head {
   display: flex;
   flex-direction: column;
-  height: 100%;
-}
-
-.opt-head .opt-strip {
-  flex: 1;
 }
 
 .opt-big {
@@ -867,8 +903,13 @@ a:focus-visible {
   gap: 6px;
   font-size: 34px;
   font-weight: 800;
-  min-height: 62px;
+  height: 62px;
   color: var(--text);
+}
+
+.opt-head .opt-row {
+  height: 32px;
+  line-height: 20px;
 }
 
 .opt-big .icon {
@@ -907,13 +948,11 @@ a:focus-visible {
 }
 
 .opt-strip:hover,
-.col-option.hover .opt-strip,
 .row-option.hover .opt-strip {
   background: var(--strip-hover);
 }
 
 /* Over one of the winner's cells: the same blue as any other option, with its gold as a border. */
-.col-option.win.hover .opt-strip,
 .row-option.win.hover .opt-strip {
   background: var(--strip-hover);
   color: var(--head-ink);
@@ -926,9 +965,59 @@ a:focus-visible {
 }
 
 /* Over one of the Pugh baseline's cells: it keeps its color and gets a ring instead. */
-.col-option.baseline.hover .opt-strip,
 .row-option.baseline.hover .opt-strip {
   box-shadow: inset 0 0 0 3px var(--strip-hover);
+}
+
+/* Factors as rows, a name cell can be taller than its strip (another name is longer), so the whole
+   cell carries the strip's colors, in the same states, and the strip inside stays clear. */
+.grid thead .name-cell {
+  background: var(--strip);
+  color: var(--head-ink);
+  vertical-align: middle;
+}
+
+.grid thead .name-cell .opt-strip {
+  background: none;
+  color: inherit;
+}
+
+.grid thead .name-cell:hover,
+.grid thead .name-cell.hover {
+  background: var(--strip-hover);
+}
+
+.grid thead .name-cell.win {
+  background: var(--win);
+  color: var(--win-ink);
+}
+
+.grid thead .name-cell.baseline {
+  background: var(--base-strip);
+  color: #ffffff;
+}
+
+.grid thead .name-cell.win.hover {
+  background: var(--strip-hover);
+  color: var(--head-ink);
+  box-shadow:
+    inset 0 0 0 3px var(--win),
+    0 6px 10px -8px var(--sticky-shadow);
+}
+
+.grid thead .name-cell.baseline.hover {
+  box-shadow:
+    inset 0 0 0 3px var(--strip-hover),
+    0 6px 10px -8px var(--sticky-shadow);
+}
+
+.grid thead .name-cell .abstain-badge {
+  margin-bottom: 6px;
+}
+
+.grid thead .name-row .corner {
+  background: var(--head);
+  vertical-align: middle;
 }
 
 .opt-strip .icon-button {
@@ -960,12 +1049,7 @@ a:focus-visible {
   border-color: rgb(255 255 255 / 0.4);
 }
 
-/* Winner: gold name strip, gold-tinted cells */
-.col-option.win .opt-strip {
-  background: var(--win);
-  color: var(--win-ink);
-}
-
+/* Winner: gold name strip (its name cell, above), gold-tinted cells */
 .col-option.win .opt-name::placeholder {
   color: rgb(0 0 0 / 0.5);
 }
@@ -975,11 +1059,6 @@ a:focus-visible {
 .col-option.baseline .opt-row {
   background: var(--base-head);
   color: var(--base-head-ink);
-}
-
-.col-option.baseline .opt-strip {
-  background: var(--base-strip);
-  color: #ffffff;
 }
 
 .col-add {
@@ -1770,6 +1849,14 @@ input[type='range'].unset {
     display: none;
   }
 
+  /* Just the lock, at a finger's size. */
+  .privacy-badge {
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+  }
+
   .hero {
     padding: 20px 16px;
   }
@@ -1814,9 +1901,10 @@ input[type='range'].unset {
   position: sticky;
   inset-inline-start: 0;
   z-index: 2;
-  width: var(--row-option-w);
-  min-width: var(--row-option-w);
-  max-width: var(--row-option-w);
+  /* --row-name-w: wider, when a long name needs it (set by the table). */
+  width: var(--row-name-w, var(--row-option-w));
+  min-width: var(--row-name-w, var(--row-option-w));
+  max-width: var(--row-name-w, var(--row-option-w));
   background: var(--surface);
   text-align: start;
   box-shadow: 8px 4px 12px -8px var(--sticky-shadow);
