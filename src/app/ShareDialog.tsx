@@ -18,11 +18,11 @@ import {
   type ShareKind,
 } from '../format/share';
 import type { AnyEnvelope, BallotEnvelope, Decision, EncryptedEnvelope, GroupResult } from '../format/types';
-import { t, useLang } from '../i18n';
+import { formatNumber, t, useLang } from '../i18n';
 import { useDeviceKey, useShortCode } from './codes';
 import { ballotSealed, checkOrganizerFirst, confirmOrganizer, markInvited, markSent, restartVoter, setMyName, type Edit } from './edit';
 import { inviteShape } from './invites';
-import { FILE_EXTENSION, canShareNatively, copyText, downloadText, safeFileName, shareNatively } from './files';
+import { canShareFile, canShareNatively, copyText, doocideFile, safeFileName, saveFile, shareFile, shareNatively } from './files';
 import { canUseFolders, saveToFolder } from './folder';
 import { signedInvite } from './groupFiles';
 import { ballotKey } from './keys';
@@ -30,8 +30,14 @@ import { decisionTitle, optionName } from './labels';
 import { useFolder } from './SharedFolder';
 import { Dialog, Icon, Segmented, useToast } from './ui';
 
-/** Some chat apps cut links around this length. */
-const LONG_LINK = 8_000;
+/**
+ * Past this length a link may not go through: some chat apps refuse long links or cut them (one
+ * refused a 9,800-character link). A cautious guess until each app is tested; files have no such limit.
+ */
+const LONG_LINK = 4_000;
+
+/** Where people open Doocide, for the line that travels with a file. */
+const SITE = 'doocide.github.io';
 
 type Kind = ShareKind | 'invite' | 'results';
 
@@ -72,10 +78,17 @@ function Preview({ included, leftOut, title }: { included: string[]; leftOut: st
   );
 }
 
-/** A link that's been made, and whether it travels readable (not locked with a passphrase, not sealed). */
+/** A link that's been made, whether it travels readable (not locked with a passphrase, not sealed), and what it carries. */
 interface MadeLink {
   url: string;
   plain: boolean;
+  out: Outgoing;
+}
+
+/** A file that's been made, and whether it's saved already (browsers whose share sheet refuses it). */
+interface MadeFile {
+  file: File;
+  saved: boolean;
 }
 
 /**
@@ -83,13 +96,15 @@ interface MadeLink {
  * line above, so the chat shows it: link previews never see the decision after "#". Never for a locked
  * or sealed link, where the title is meant to stay hidden.
  */
-function LinkBox({ link: { url: link, plain }, title }: { link: MadeLink; title: string }) {
+function LinkBox({ link: { url: link, plain }, title, onFile }: { link: MadeLink; title: string; onFile: () => void }) {
   const toast = useToast();
   const name = plain ? title.trim() : '';
+  // A long link may not go through, so the file comes first: same contents, no length limit.
+  const long = link.length > LONG_LINK;
   return (
     <>
       <textarea className="link-box" readOnly rows={3} value={link} dir="ltr" onFocus={(e) => e.currentTarget.select()} aria-label={t('share.link')} />
-      {link.length > LONG_LINK && <p className="callout warn small">{t('share.longLink')}</p>}
+      {long && <p className="callout warn small">{t('share.longLink', { length: formatNumber(link.length) })}</p>}
       <div className="actions">
         {canShareNatively() && (
           <button className="button" onClick={() => shareNatively(name ? { title: name, url: link } : { url: link })}>
@@ -98,11 +113,62 @@ function LinkBox({ link: { url: link, plain }, title }: { link: MadeLink; title:
           </button>
         )}
         <button
-          className="button primary"
+          className={long ? 'button' : 'button primary'}
           onClick={async () => toast((await copyText(name ? `${name}\n${link}` : link)) ? (name ? t('share.copiedWithTitle') : t('share.copied')) : t('share.copyFailed'))}
         >
           {t('share.copy')}
         </button>
+        {long && <FileButton primary onClick={onFile} />}
+      </div>
+    </>
+  );
+}
+
+/** "Send as file" where the share sheet takes Doocide files, else "Save as file". */
+function FileButton({ primary, disabled, onClick }: { primary?: boolean; disabled?: boolean; onClick: () => void | Promise<void> }) {
+  const sending = canShareFile();
+  return (
+    <button className={primary ? 'button primary' : 'button'} disabled={disabled} onClick={onClick}>
+      <Icon name={sending ? 'share' : 'download'} size={18} />
+      {sending ? t('share.sendAsFile') : t('share.saveFile')}
+    </button>
+  );
+}
+
+/**
+ * The file once it's made: send it through the device's share sheet with a line on how to open it,
+ * or save it. Browsers whose share sheet refuses Doocide files have saved it already. Says how the
+ * other person opens it, on a computer or a phone.
+ */
+function FileBox({ made: { file, saved } }: { made: MadeFile }) {
+  const toast = useToast();
+  const sending = canShareFile(file);
+  return (
+    <>
+      <p className="file-made">
+        <Icon name="file" size={18} />
+        <bdi>{file.name}</bdi>
+        <span className="muted small">{t('share.fileSize', { size: formatNumber(Math.max(1, Math.ceil(file.size / 1024))) })}</span>
+      </p>
+      {saved && <p className="muted small">{t('share.fileSaved')}</p>}
+      <p className="callout small">{t('share.fileHow', { site: SITE })}</p>
+      <div className="actions">
+        <button
+          className={sending ? 'button' : 'button primary'}
+          onClick={() => {
+            saveFile(file);
+            toast(t('share.fileSaved'));
+          }}
+        >
+          <Icon name="download" size={18} />
+          {saved ? t('share.saveAgain') : t('share.saveFile')}
+        </button>
+        {sending && (
+          <button className="button primary" onClick={async () => (await shareFile(file, t('share.fileText', { site: SITE }))) === 'failed' && toast(t('share.sendFailed'))}>
+            <Icon name="share" size={18} />
+            {t('share.sendFile')}
+          </button>
+        )}
       </div>
     </>
   );
@@ -111,10 +177,7 @@ function LinkBox({ link: { url: link, plain }, title }: { link: MadeLink; title:
 function Actions({ onFile, onLink, disabled }: { onFile: () => void | Promise<void>; onLink: () => void | Promise<void>; disabled?: boolean }) {
   return (
     <div className="actions">
-      <button className="button" disabled={disabled} onClick={onFile}>
-        <Icon name="download" size={18} />
-        {t('share.saveFile')}
-      </button>
+      <FileButton disabled={disabled} onClick={onFile} />
       <button className="button primary" disabled={disabled} onClick={onLink}>
         <Icon name="link" size={18} />
         {t('share.makeLink')}
@@ -126,14 +189,23 @@ function Actions({ onFile, onLink, disabled }: { onFile: () => void | Promise<vo
 /** What leaves the device: a checked envelope, or one that was checked and then sealed or locked. */
 type Outgoing = AnyEnvelope | EncryptedEnvelope;
 
-const saveOutgoing = (out: Outgoing, name: string) => {
+/**
+ * The file for what goes out. Sending it through the share sheet needs a fresh tap (locking and
+ * sealing take a moment), so it waits in a box with its own Send button; where the share sheet
+ * refuses Doocide files, it's saved right away.
+ */
+const fileFor = (out: Outgoing, name: string): MadeFile => {
   if (out.enc === 'none') assertShareable(out);
-  downloadText(JSON.stringify(out, null, 2), `${name}${FILE_EXTENSION}`, 'application/json');
+  const file = doocideFile(JSON.stringify(out, null, 2), name);
+  const saved = !canShareFile(file);
+  if (saved) saveFile(file);
+  return { file, saved };
 };
 
 const linkFor = async (out: Outgoing): Promise<MadeLink> => ({
   url: out.enc === 'none' ? await makeLink(out, location.href) : await makeEncryptedLink(out, location.href),
   plain: out.enc === 'none',
+  out,
 });
 
 /** How good a passphrase is: too short to use, fine, or strong. Length matters most; several random words are best. */
@@ -174,6 +246,8 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
   const named = g.settings.anonymity === 'named';
   const [name, setName] = useState(g.myName ?? '');
   const [link, setLink] = useState<MadeLink | null>(null);
+  const [file, setFile] = useState<MadeFile | null>(null);
+  const fileName = `ballot-${newId(6)}`;
   const [signingKey, setSigningKey] = useState<string>();
   const withName: Decision = { ...d, group: { ...g, myName: name } };
   const s = ballotSummary(withName);
@@ -260,6 +334,7 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
             onChange={(e) => {
               setName(e.target.value);
               setLink(null);
+              setFile(null);
             }}
             onBlur={() => onEdit(setMyName(name))}
           />
@@ -288,17 +363,26 @@ function BallotShare({ d, onEdit, onClose }: Omit<Props, 'result' | 'initial'>) 
           </div>
         </section>
       )}
-      {!link ? (
-        <Actions
-          disabled={busy || missingName || !signingKey || mustCheck}
-          onFile={async () => saveOutgoing(await send(), `ballot-${newId(6)}`)}
-          onLink={async () => setLink(await linkFor(await send()))}
+      {file ? (
+        <FileBox made={file} />
+      ) : link ? (
+        <LinkBox
+          link={link}
+          title={d.title}
+          onFile={() => {
+            setFile(fileFor(link.out, fileName));
+            setLink(null);
+          }}
         />
       ) : (
-        <LinkBox link={link} title={d.title} />
+        <Actions
+          disabled={busy || missingName || !signingKey || mustCheck}
+          onFile={async () => setFile(fileFor(await send(), fileName))}
+          onLink={async () => setLink(await linkFor(await send()))}
+        />
       )}
       {missingName && <p className="muted small">{t('participant.nameNeeded')}</p>}
-      {!link && (
+      {!link && !file && (
         <section className="folder-save" aria-labelledby="folder-save-title">
           <h3 id="folder-save-title">
             <Icon name="folder" size={16} /> {t('folder.ballotTitle')}
@@ -337,6 +421,7 @@ function OwnerShare({ d, result, initial, onEdit, onClose }: Props) {
   const organizer = d.group?.role === 'organizer';
   const [kind, setKind] = useState<Kind>(initial ?? (organizer ? 'invite' : 'decision'));
   const [link, setLink] = useState<MadeLink | null>(null);
+  const [file, setFile] = useState<MadeFile | null>(null);
   const [locking, setLocking] = useState(false);
   const [passphrase, setPassphrase] = useState('');
   const [busy, setBusy] = useState(false);
@@ -440,6 +525,7 @@ function OwnerShare({ d, result, initial, onEdit, onClose }: Props) {
         onChange={(k) => {
           setKind(k);
           setLink(null);
+          setFile(null);
         }}
         options={kinds}
       />
@@ -451,21 +537,32 @@ function OwnerShare({ d, result, initial, onEdit, onClose }: Props) {
         onToggle={(on) => {
           setLocking(on);
           setLink(null);
+          setFile(null);
         }}
         onChange={(v) => {
           setPassphrase(v);
           setLink(null);
+          setFile(null);
         }}
       />
       <p className="callout">{locking ? t('share.foreverLocked') : t('share.forever')}</p>
-      {!link ? (
-        <Actions
-          disabled={busy || (kind === 'invite' && !myKey) || (locking && passphraseStrength(passphrase) === 'short')}
-          onFile={() => run(async () => saveOutgoing(await outgoing(), fileName))}
-          onLink={() => run(async () => setLink(await linkFor(await outgoing())))}
+      {file ? (
+        <FileBox made={file} />
+      ) : link ? (
+        <LinkBox
+          link={link}
+          title={d.title}
+          onFile={() => {
+            setFile(fileFor(link.out, fileName));
+            setLink(null);
+          }}
         />
       ) : (
-        <LinkBox link={link} title={d.title} />
+        <Actions
+          disabled={busy || (kind === 'invite' && !myKey) || (locking && passphraseStrength(passphrase) === 'short')}
+          onFile={() => run(async () => setFile(fileFor(await outgoing(), fileName)))}
+          onLink={() => run(async () => setLink(await linkFor(await outgoing())))}
+        />
       )}
     </Dialog>
   );

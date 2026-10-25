@@ -55,10 +55,11 @@ function fileInput(accept: string, multiple = false): HTMLInputElement {
   return input;
 }
 
-/** Opens the system file picker and returns the chosen file's text, size-checked. */
-export async function pickFileText(accept: string): Promise<string | null> {
-  const file = (await choose(fileInput(accept)))?.[0];
-  if (!file) return null;
+/**
+ * A file's text, size-checked: the one way in for files picked, dropped on the page, opened with an
+ * installed Doocide, or shared to it from another app.
+ */
+export async function readFileText(file: Blob): Promise<string> {
   if (file.size > LIMITS.fileBytes) throw new FormatError('too-big');
   try {
     return await file.text();
@@ -67,13 +68,23 @@ export async function pickFileText(accept: string): Promise<string | null> {
   }
 }
 
+/** Opens the system file picker and returns the chosen file's text, size-checked. */
+export async function pickFileText(accept: string): Promise<string | null> {
+  const file = (await choose(fileInput(accept)))?.[0];
+  return file ? readFileText(file) : null;
+}
+
 /**
  * Opens the system file picker for several files at once (ballots, for example). Returns each file's
  * text; files that are too big or unreadable are counted in `failed`, not read.
  */
 export async function pickFilesText(accept: string): Promise<{ texts: string[]; failed: number } | null> {
   const files = await choose(fileInput(accept, true));
-  if (!files) return null;
+  return files ? readFilesText(files) : null;
+}
+
+/** Several files' text (picked or dropped at once); files that are too big or unreadable are counted in `failed`, not read. */
+export async function readFilesText(files: File[]): Promise<{ texts: string[]; failed: number }> {
   const texts: string[] = [];
   let failed = Math.max(0, files.length - LIMITS.ballots);
   for (const file of files.slice(0, LIMITS.ballots)) {
@@ -99,6 +110,44 @@ export async function shareNatively(data: ShareData): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** A Doocide file, ready to save or send: the same text a download would hold. */
+export const doocideFile = (text: string, name: string) => new File([text], `${name}${FILE_EXTENSION}`, { type: 'application/json' });
+
+/**
+ * Whether this browser can hand a Doocide file to the device's share sheet. Some only share pictures,
+ * sound, video, text and PDFs, and refuse other files; those save it instead.
+ */
+export function canShareFile(file: File = doocideFile('{}', 'test')): boolean {
+  try {
+    return typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] });
+  } catch {
+    return false;
+  }
+}
+
+/** The device's share sheet with a file and a line on how to open it. Must follow a tap, with nothing slow in between. */
+export async function shareFile(file: File, text: string): Promise<'shared' | 'cancelled' | 'failed'> {
+  try {
+    await navigator.share({ files: [file], text });
+    return 'shared';
+  } catch (e) {
+    return e instanceof DOMException && e.name === 'AbortError' ? 'cancelled' : 'failed';
+  }
+}
+
+/** Saves a file to the device's downloads. */
+export function saveFile(file: File) {
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.name;
+  a.rel = 'noopener';
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 export async function copyText(text: string): Promise<boolean> {

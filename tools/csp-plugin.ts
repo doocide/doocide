@@ -21,6 +21,9 @@ export function buildPolicy(html: string): string {
     "img-src 'self' data:",
     // Language packs and templates only, from the app's own origin.
     "connect-src 'self'",
+    // The online page's app manifest and its one service worker (receiving shared files), both its own.
+    "manifest-src 'self'",
+    "worker-src 'self'",
     "base-uri 'none'",
     "form-action 'none'",
     "object-src 'none'",

@@ -1,7 +1,9 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
+import { watchInstall } from './app/install';
 import { applyTheme, getPrefLang, getTheme } from './app/prefs';
+import { registerWorker } from './app/received';
 import { ConfirmHost, ToastHost } from './app/ui';
 import { setLang } from './i18n';
 import { isUiLanguage } from './i18n/languages';
@@ -19,6 +21,7 @@ function preferredLanguage(): string {
 }
 
 async function start() {
+  watchInstall();
   applyTheme(getTheme());
   await setLang(preferredLanguage());
   createRoot(document.getElementById('root')!).render(
@@ -30,6 +33,7 @@ async function start() {
       </ToastHost>
     </StrictMode>,
   );
+  registerWorker();
 }
 
 start();

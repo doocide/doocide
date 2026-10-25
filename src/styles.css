@@ -726,6 +726,13 @@ a:focus-visible {
   background: var(--bar);
 }
 
+/* The app's version, beside About in the footer. */
+.version-tag {
+  color: var(--muted);
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Decision */
 
 .decision {
@@ -1579,6 +1586,41 @@ a:focus-visible {
   font-size: 12px;
   margin-top: 10px;
   word-break: break-all;
+}
+
+/* A file that's been made in the share dialog: its name and size. */
+.file-made {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.install-hint {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+/* Files dragged over the page: a frame and a label over everything, until they're dropped or leave. */
+body.dropping::after {
+  content: attr(data-drop-hint);
+  position: fixed;
+  inset: 12px;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px dashed var(--accent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--accent-soft) 85%, transparent);
+  color: var(--accent);
+  font-size: 22px;
+  font-weight: 700;
+  pointer-events: none;
 }
 
 .ext-link {

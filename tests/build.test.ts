@@ -36,6 +36,8 @@ describe.skipIf(!built)('built pages', () => {
     it(`${name}: talks only to its own origin`, () => {
       expect(directive('default-src')).toBe("default-src 'none'");
       expect(directive('connect-src')).toBe("connect-src 'self'");
+      expect(directive('manifest-src')).toBe("manifest-src 'self'");
+      expect(directive('worker-src')).toBe("worker-src 'self'");
       expect(policy).toContain("require-trusted-types-for 'script'");
     });
 
@@ -46,4 +48,21 @@ describe.skipIf(!built)('built pages', () => {
       expect(html).not.toMatch(/@import\s+(url\()?\s*['"]?https?:/);
     });
   }
+});
+
+describe.skipIf(!built)('installable online, self-contained offline', () => {
+  const online = built ? readFileSync(pages[0]!, 'utf8') : '';
+  const offline = built ? readFileSync(pages[1]!, 'utf8') : '';
+
+  it('the online page links its app manifest and icon, next to it', () => {
+    expect(online).toContain('<link rel="manifest" href="manifest.webmanifest" />');
+    expect(online).toContain('<link rel="apple-touch-icon" href="apple-touch-icon.png" />');
+    for (const file of ['manifest.webmanifest', 'sw.js', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png']) {
+      expect(existsSync(join(root, 'dist', file)), file).toBe(true);
+    }
+  });
+
+  it('the offline file links no manifest', () => {
+    expect(offline).not.toMatch(/rel="manifest"|apple-touch-icon/);
+  });
 });

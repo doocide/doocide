@@ -9,8 +9,8 @@ import { getLang, t, useLang } from '../i18n';
 import { BallotReview } from './BallotReview';
 import { DecisionView, type IncomingSource } from './DecisionView';
 import { addBallots, applyFolderResults, isNewerResult, refreshFromInvite, type Edit } from './edit';
-import { FILE_EXTENSION, pickFileText, pickFilesText } from './files';
-import { canUseFolders, connectFolder, forgetFolder, inviteFileName, pickFolderBallots, readBallots, readNamed, rememberedFolder, resultsFileName } from './folder';
+import { FILE_EXTENSION, pickFileText, pickFilesText, readFileText, readFilesText } from './files';
+import { canUseFolders, connectFolder, forgetFolder, inviteFileName, onOpenedFiles, pickFolderBallots, readBallots, readNamed, rememberedFolder, resultsFileName } from './folder';
 import { ballotsFromTexts, findOrganizer, readUpdate, unlockUpdate, type Update } from './groupFiles';
 import { ImportDialog } from './ImportDialog';
 import { TemplatesDialog } from './InfoDialogs';
@@ -18,6 +18,7 @@ import { hasChanges, inviteChanges, isOlderInvite } from './invites';
 import { findSealer, forgetDecisionKey } from './keys';
 import { decisionTitle } from './labels';
 import { Library } from './Library';
+import { takeReceived } from './received';
 import { LockDialog, LockScreen, PassphraseDialog, PassphrasePrompt } from './Lock';
 import { afterApproval } from './SharedFolder';
 import { downloadBackup } from './backup';
@@ -312,23 +313,102 @@ export function App() {
     [commit, go, ask],
   );
 
-  const openFile = async () => {
-    try {
-      const text = await pickFileText(`${FILE_EXTENSION},.json,application/json`);
-      if (text !== null) go(await openIncoming(parseIncomingText(text), 'file'));
-    } catch (e) {
-      setView({ name: 'error', code: errorCode(e) });
-    }
+  /**
+   * A file from outside, read the one checked way (size-capped), then opened like any incoming link:
+   * a read-only preview or a review screen, nothing saved. Picked, dropped on the page, opened with
+   * the installed app, or shared to it from another app.
+   */
+  const openText = useCallback(
+    async (read: () => Promise<string | null>) => {
+      try {
+        const text = await read();
+        if (text !== null) go(await openIncoming(parseIncomingText(text), 'file'));
+      } catch (e) {
+        setView({ name: 'error', code: errorCode(e) });
+      }
+    },
+    [go, openIncoming],
+  );
+
+  const openFile = () => openText(() => pickFileText(`${FILE_EXTENSION},.json,application/json`));
+
+  /** Several ballot files for the organizer's decision; files that aren't ballots for it are counted, not opened. */
+  const reviewBallots = async (d: Decision, read: { texts: string[]; failed: number }) => {
+    const { ballots, skipped } = await ballotsFromTexts(d, read.texts);
+    if (ballots.length === 0) return toast(t('review.noneFound'));
+    go({ name: 'review', decisionId: d.id, ballots, skipped: skipped + read.failed });
   };
 
-  /** The organizer picks several ballot files at once; files that aren't ballots for this decision are counted, not opened. */
+  /** The organizer picks several ballot files at once. */
   const openBallots = async (d: Decision) => {
     const picked = await pickFilesText(`${FILE_EXTENSION},.json,application/json`);
-    if (!picked) return;
-    const { ballots, skipped } = await ballotsFromTexts(d, picked.texts);
-    if (ballots.length === 0) return toast(t('review.noneFound'));
-    go({ name: 'review', decisionId: d.id, ballots, skipped: skipped + picked.failed });
+    if (picked) await reviewBallots(d, picked);
   };
+
+  // Files from other apps, once the library is there (a ballot needs its decision): opened with the
+  // installed app (a double-click on a computer), or shared to it from a phone's share menu.
+  useEffect(() => {
+    if (!loaded) return;
+    onOpenedFiles((file) => openText(() => readFileText(file)));
+    takeReceived().then((file) => file && openText(() => readFileText(file)));
+  }, [loaded, openText]);
+
+  // Files dropped anywhere on the page: one opens like "Open a file"; several, on an organizer's
+  // decision, are read as ballots. The page says "Drop to open" while files are over it.
+  const dropped = useRef<(files: File[]) => void>(() => {});
+  useEffect(() => {
+    dropped.current = (files) => {
+      if (files.length === 1) return void openText(() => readFileText(files[0]!));
+      const d = view.name === 'decision' ? decisions.get(view.id) : undefined;
+      if (d?.group?.role !== 'organizer') return toast(t('drop.oneFile'));
+      readFilesText(files).then((read) => reviewBallots(d, read));
+    };
+  });
+  useEffect(() => {
+    if (locked) return;
+    const body = document.body;
+    let depth = 0;
+    const files = (e: DragEvent) => Boolean(e.dataTransfer?.types.includes('Files'));
+    const show = (on: boolean) => {
+      body.classList.toggle('dropping', on);
+      if (on) body.dataset.dropHint = t('drop.hint');
+    };
+    const enter = (e: DragEvent) => {
+      if (!files(e)) return;
+      e.preventDefault();
+      depth++;
+      show(true);
+    };
+    const over = (e: DragEvent) => {
+      if (!files(e)) return;
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = 'copy';
+    };
+    const leave = (e: DragEvent) => {
+      if (!files(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) show(false);
+    };
+    const drop = (e: DragEvent) => {
+      if (!files(e)) return;
+      e.preventDefault();
+      depth = 0;
+      show(false);
+      const list = [...(e.dataTransfer?.files ?? [])];
+      if (list.length) dropped.current(list);
+    };
+    window.addEventListener('dragenter', enter);
+    window.addEventListener('dragover', over);
+    window.addEventListener('dragleave', leave);
+    window.addEventListener('drop', drop);
+    return () => {
+      window.removeEventListener('dragenter', enter);
+      window.removeEventListener('dragover', over);
+      window.removeEventListener('dragleave', leave);
+      window.removeEventListener('drop', drop);
+      show(false);
+    };
+  }, [locked]);
 
   /** The organizer checks the shared folder (or, without folder access, picks it): only ballots that bring something new go to review. */
   const collectBallots = async (d: Decision) => {

@@ -64,6 +64,11 @@ describe('source rules', () => {
     expect(codeOf('src/app/folder.ts')).not.toMatch(/setInterval|setTimeout|FileSystemObserver|requestIdleCallback/);
   });
 
+  it('touches the service worker and its storage in one place only, and opened files only through folder.ts', () => {
+    expect(filesMatching(/serviceWorker|\bcaches\b/)).toEqual(['src/app/received.ts']);
+    expect(filesMatching(/launchQueue/)).toEqual(['src/app/folder.ts']);
+  });
+
   it('keeps localStorage for preferences only', () => {
     expect(filesMatching(/localStorage|sessionStorage/)).toEqual(['src/app/prefs.ts']);
   });

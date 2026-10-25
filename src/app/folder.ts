@@ -223,3 +223,29 @@ export async function pickFolderBallots(): Promise<Read | null> {
   }
   return { texts, failed };
 }
+
+// Opening a file with the installed app (a double-click on a computer, where the browser lets an
+// installed web app handle .doocide files). The browser hands over a file handle; only its file is
+// read, once, the same checked way as a picked file. The handle isn't kept.
+
+interface LaunchParams {
+  files?: readonly { kind: string; getFile?: () => Promise<File> }[];
+}
+
+interface LaunchQueue {
+  setConsumer(consumer: (params: LaunchParams) => void): void;
+}
+
+/** Files opened with the installed app, one at a time. Browsers without file opening never call it. */
+export function onOpenedFiles(open: (file: File) => void) {
+  const queue = (window as { launchQueue?: LaunchQueue }).launchQueue;
+  queue?.setConsumer(async ({ files }) => {
+    const handle = files?.[0];
+    if (handle?.kind !== 'file' || !handle.getFile) return;
+    try {
+      open(await handle.getFile());
+    } catch {
+      // Unreadable (moved, or permission withdrawn): nothing opens.
+    }
+  });
+}

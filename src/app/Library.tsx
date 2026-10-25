@@ -5,6 +5,7 @@ import { formatDate, setLang, t, useLang } from '../i18n';
 import { UI_LANGUAGES } from '../i18n/languages';
 import { backupStatus, type BackupStatus } from './backup';
 import { AboutDialog, SafetyDialog } from './InfoDialogs';
+import { install, useCanInstall } from './install';
 import { decisionTitle, optionName } from './labels';
 import { applyTheme, getTheme, setPrefLang, type Theme } from './prefs';
 import { Icon, Logo, REPO_URL, useToast } from './ui';
@@ -163,6 +164,7 @@ export function Library({
             </button>
           </div>
           <p className="muted small">{t('library.openFileNote')}</p>
+          <InstallHint />
         </section>
 
         {decisions.length > 0 && (
@@ -220,7 +222,8 @@ export function Library({
           </button>
         )}
         <button className="link-button" onClick={() => setDialog('about')}>
-          {t('about.title')}
+          {t('about.title')}{' '}
+          <span className="version-tag">v{__VERSION__}</span>
         </button>
         {!__OFFLINE__ && (
           <a className="link-button" href="./doocide.html" download="doocide.html">
@@ -235,5 +238,19 @@ export function Library({
       {dialog === 'safety' && <SafetyDialog onClose={() => setDialog(null)} />}
       {dialog === 'about' && <AboutDialog onClose={() => setDialog(null)} />}
     </div>
+  );
+}
+
+/** Where the browser offers it: install Doocide as an app, so .doocide files people send can open in it. */
+function InstallHint() {
+  const can = useCanInstall();
+  if (!can) return null;
+  return (
+    <p className="muted small install-hint">
+      <Icon name="download" size={14} /> {t('install.hint')}{' '}
+      <button className="link-button small" onClick={() => install()}>
+        {t('install.button')}
+      </button>
+    </p>
   );
 }
