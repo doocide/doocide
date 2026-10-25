@@ -6,6 +6,8 @@
   "common.loading": "Se încarcă…",
   "common.language": "Limba",
   "common.languageFailed": "Limba aceasta nu s-a putut încărca. Verifică conexiunea.",
+  "common.showMore": "Arată mai mult",
+  "common.showLess": "Arată mai puțin",
 
   "theme.label": "Temă: {theme}",
   "theme.auto": "ca dispozitivul",

@@ -767,9 +767,29 @@ a:focus-visible {
 
 .modebar .description {
   flex-basis: 100%;
+  margin: 2px 0 4px;
+}
+
+.description-text,
+.description-full {
+  margin: 0;
   color: var(--text);
   white-space: pre-wrap;
-  margin: 2px 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.description .link-button {
+  padding-inline: 0;
+}
+
+/* Long text cut to two lines, with "…" where it's cut (Clamp.tsx). */
+.clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .decision-main {
@@ -1643,6 +1663,12 @@ a:focus-visible {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   pointer-events: none;
+  /* At most 14 lines: the details dialog has the rest. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 14;
+  line-clamp: 14;
+  overflow: hidden;
   box-shadow: 0 4px 16px rgb(0 0 0 / 0.2);
 }
 

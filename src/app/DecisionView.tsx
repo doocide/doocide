@@ -11,6 +11,7 @@ import { abstainedOptions } from '../format/share';
 import { ballotSealed, confirmOrganizer, scoringLocked, setRows, setTitle, structureLocked, tidyNames, weightsLocked, withoutAbstained, type Edit, type Target } from './edit';
 import { downloadText, safeFileName } from './files';
 import { optionName } from './labels';
+import { DescriptionText } from './Clamp';
 import { PrivacyBadge } from './PrivacyBadge';
 import { canUseFolders, resultsFileName } from './folder';
 import { useFolder } from './SharedFolder';
@@ -410,11 +411,7 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
           />
         )}
         {onlyGroup && <span className="badge shared">{t('group.groupN', { count: gv.result.ballots })}</span>}
-        {d.description && (
-          <p className="description" dir="auto" lang={d.lang}>
-            {d.description}
-          </p>
-        )}
+        {d.description && <DescriptionText text={d.description} lang={d.lang} />}
       </div>
 
       {isPhone ? (

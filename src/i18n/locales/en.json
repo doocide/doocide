@@ -6,6 +6,8 @@
   "common.loading": "Loading…",
   "common.language": "Language",
   "common.languageFailed": "That language couldn't be loaded. Check your connection.",
+  "common.showMore": "Show more",
+  "common.showLess": "Show less",
 
   "theme.label": "Theme: {theme}",
   "theme.auto": "match device",

@@ -13,6 +13,7 @@ import { addFactor, addOption, renameFactor, renameOption, setRating, setScore, 
 import { ExternalLink } from './ExternalLink';
 import { factorGuide, factorName, optionName } from './labels';
 import { nameColumnWidth, useNameRoom } from './nameWidth';
+import { ClampedText } from './Clamp';
 import { Icon, Stars } from './ui';
 
 /** What can't be changed even when the decision is editable: a participant's copy belongs to the organizer. */
@@ -211,11 +212,7 @@ function FactorName({ c, f, children }: { c: Ctx; f: Factor; children?: ReactNod
         </button>
       </div>
       {children}
-      {guide && (
-        <div className="guide" dir="auto" lang={c.d.lang}>
-          {guide}
-        </div>
-      )}
+      {guide && <ClampedText className="guide" text={guide} lang={c.d.lang} />}
     </>
   );
 }
@@ -277,7 +274,8 @@ function Cell({ c, o, f }: { c: Ctx; o: Option; f: Factor }) {
       )}
       {fact && (
         <div className="fact" dir="auto" lang={d.lang}>
-          {fact.text}
+          {/* Cut to two lines; the link stays in view under it. */}
+          {fact.text && <ClampedText text={fact.text} lang={d.lang} />}
           {fact.url && <ExternalLink url={fact.url} />}
         </div>
       )}
