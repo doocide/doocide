@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://doocide.github.io/schema/doocide-v1.schema.json",
   "title": "Doocide file, version 1",
-  "description": "A decision matrix (Pugh Matrix): options compared on weighted factors. Files use the .doocide extension and are plain JSON. To fill a template with an AI assistant: keep every id, add options and factors with new short ids, write evidence as facts, and leave scores to the person deciding.",
+  "description": "A decision matrix (Pugh Matrix): options compared on weighted factors. Files use the .doocide extension and are plain JSON. To fill a template with an AI assistant: keep every id, add options and factors with new short ids, write evidence as facts, and leave scores to the person deciding. To make a new version of a decision people already scored: keep the ids of everything that keeps its meaning, never reuse an id for something else, list the earlier version's id in replaces, and give was on any option or factor whose id changed, so people can carry their scores over.",
   "type": "object",
   "required": ["doocide"],
   "properties": {
