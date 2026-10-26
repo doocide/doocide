@@ -43,6 +43,8 @@ function flagText(f: BallotFlag, d: Decision, uiLang: string): string {
       return t('review.flagEmpty');
     case 'otherRound':
       return t('review.flagOtherRound');
+    case 'earlierVersion':
+      return t('review.flagEarlierVersion', { date: formatDate(f.changedAt) });
   }
 }
 

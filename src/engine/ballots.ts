@@ -30,7 +30,19 @@ export type BallotFlag =
   /** No scores at all. */
   | { kind: 'empty' }
   /** Made from an earlier invite of this decision. */
-  | { kind: 'otherRound' };
+  | { kind: 'otherRound' }
+  /** Made before the organizer's latest invite with changes: scored on an earlier version of the decision. Still counts until excluded. */
+  | { kind: 'earlierVersion'; changedAt: string };
+
+/**
+ * A ballot made before the decision changed. Anonymous ballots carry the day only, so on the day of
+ * the change it can't be told, and it isn't flagged.
+ */
+export function scoredBefore(ballot: { createdAt: string }, changedAt: string | undefined): boolean {
+  if (!changedAt) return false;
+  const dayOnly = ballot.createdAt.endsWith('T00:00:00.000Z');
+  return dayOnly ? ballot.createdAt.slice(0, 10) < changedAt.slice(0, 10) : ballot.createdAt < changedAt;
+}
 
 export interface Review {
   /** The ballot fitted to the decision: unknown cells dropped, values clamped, names removed when anonymous. */
@@ -111,6 +123,7 @@ export function reviewBallots(d: Decision, incoming: ReceivedBallot[]): Review[]
     if (expected && count > expected && adds) flags.push({ kind: 'overCount', count, expected });
     if (nameRemoved) flags.push({ kind: 'nameRemoved' });
     if (g && ballot.inviteId !== g.inviteId) flags.push({ kind: 'otherRound' });
+    if (g?.shapeChangedAt && scoredBefore(ballot, g.shapeChangedAt)) flags.push({ kind: 'earlierVersion', changedAt: g.shapeChangedAt });
 
     return { ballot, signature: received.signature, flags, adds };
   });

@@ -30,6 +30,7 @@ import {
   type Option,
   type Origin,
   type Score,
+  type SetAside,
   type SelectionSummary,
   type Settings,
   type StoredBallot,
@@ -573,6 +574,17 @@ export function validateInvite(raw: unknown): Invite {
 }
 
 /** The group data kept with a decision on this device. Only ever read from the owner's own storage and backups. */
+/** What a newer invite set aside in a participant's copy: any well-formed ids, since their options or factors are gone. */
+function cleanSetAside(v: unknown): SetAside | undefined {
+  if (!isObj(v)) return undefined;
+  const now = new Date().toISOString();
+  const scores = cleanScores(get(v, 'scores'), null, null, 0, 100, false);
+  const pugh = cleanScores(get(v, 'pugh'), null, null, -2, 2, true);
+  const notes = cleanNotes(get(v, 'notes'), null, null, true, now);
+  if (scores.length + pugh.length + notes.length === 0) return undefined;
+  return { scores, pugh, notes, at: cleanDate(get(v, 'at'), now) };
+}
+
 function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined {
   if (!isObj(v)) return undefined;
   const role = get(v, 'role') === 'participant' ? 'participant' : 'organizer';
@@ -594,6 +606,7 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
     const key = cleanKey(get(v, 'key'));
     const inviteVersion = get(v, 'inviteVersion') === undefined ? undefined : cleanDate(get(v, 'inviteVersion'), '');
     const resultsAt = result && get(v, 'resultsAt') !== undefined ? cleanDate(get(v, 'resultsAt'), '') : undefined;
+    const setAside = cleanSetAside(get(v, 'setAside'));
     return {
       role,
       settings,
@@ -615,6 +628,7 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
       ...(key && { key }),
       ...(result && { result }),
       ...(resultsAt && { resultsAt }),
+      ...(setAside && { setAside }),
     };
   }
 
@@ -641,6 +655,7 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
   const ballots = [...byVoter.values()];
   const confirmed = settings.anonymity === 'named' ? [...new Set(list(get(v, 'confirmed'), LIMITS.ballots, 'keys').flatMap((k) => cleanKey(k) ?? []))] : [];
   const lastInviteAt = get(v, 'lastInviteAt') === undefined ? undefined : cleanDate(get(v, 'lastInviteAt'), '');
+  const shapeChangedAt = get(v, 'shapeChangedAt') === undefined ? undefined : cleanDate(get(v, 'shapeChangedAt'), '');
   const rawShape = get(v, 'lastInviteShape');
   const lastInviteShape = typeof rawShape === 'string' && /^[a-z0-9]{1,16}$/.test(rawShape) ? rawShape : undefined;
   const publishedAt = get(v, 'publishedAt') === undefined ? undefined : cleanDate(get(v, 'publishedAt'), '');
@@ -665,6 +680,7 @@ function cleanGroup(v: unknown, shape: Omit<Shape, 'group'>): Group | undefined 
     ...(confirmed.length > 0 && { confirmed }),
     ...(lastInviteAt && { lastInviteAt }),
     ...(lastInviteShape && { lastInviteShape }),
+    ...(shapeChangedAt && { shapeChangedAt }),
     ...(publishedAt && { publishedAt }),
     ...(resultsKdf && { resultsKdf }),
     ...(summary && { summary }),

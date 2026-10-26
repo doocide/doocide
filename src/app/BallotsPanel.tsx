@@ -3,6 +3,7 @@
 
 import { useState } from 'react';
 import { ballotStatus } from '../engine';
+import { scoredBefore } from '../engine/ballots';
 import type { Decision, GroupResult, StoredBallot } from '../format/types';
 import { formatDate, t } from '../i18n';
 import { CompareCodes, useDeviceKey, useShortCode } from './codes';
@@ -95,6 +96,7 @@ export function BallotsPanel({ d, voters, result, onEdit, onInvite, onOpenBallot
                 {formatDate(b.receivedAt)}
                 {b.revision > 1 && ` · ${t('ballots.updated')}`}
                 {(b.abstain?.length ?? 0) > 0 && ` · ${t('ballots.abstained', { count: b.abstain!.length })}`}
+                {scoredBefore(b, g.shapeChangedAt) && ` · ${t('ballots.earlierVersion')}`}
               </span>
               <button
                 className="icon-button small"

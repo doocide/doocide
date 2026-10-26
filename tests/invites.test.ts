@@ -48,7 +48,8 @@ describe('what changed', () => {
     const c = inviteChanges(p, invite(v2));
     expect(c.addedFactors).toEqual(['Comfort']);
     expect(c.removedOptions).toEqual(['Car C']);
-    expect(c.renamed).toBe(1);
+    expect(c.renamed).toHaveLength(1);
+    expect(c.renamed[0]!.to).not.toBe(c.renamed[0]!.from);
     expect(c.reweighted).toBe(1);
     expect(c.rules).toBe(false);
     expect(hasChanges(c)).toBe(true);

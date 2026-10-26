@@ -44,8 +44,8 @@ export interface InviteChanges {
   addedFactors: string[];
   removedOptions: string[];
   removedFactors: string[];
-  /** Options or factors whose name changed. */
-  renamed: number;
+  /** Options or factors whose name changed, old name and new. Scores stay on them, so they're worth a look. */
+  renamed: { from: string; to: string }[];
   /** Factors whose importance changed (when the organizer sets importance). */
   reweighted: number;
   /** The scoring rules changed. */
@@ -68,7 +68,10 @@ export function inviteChanges(d: Decision, invite: Invite): InviteChanges {
     addedFactors: inv.factors.filter((f) => !factors.has(f.id)).map((f) => f.name),
     removedOptions: d.options.filter((o) => !newOptions.has(o.id)).map((o) => o.name),
     removedFactors: d.factors.filter((f) => !newFactors.has(f.id)).map((f) => f.name),
-    renamed: [...inv.options.filter((o) => options.has(o.id) && options.get(o.id)!.name !== o.name), ...inv.factors.filter((f) => factors.has(f.id) && factors.get(f.id)!.name !== f.name)].length,
+    renamed: [
+      ...inv.options.filter((o) => options.has(o.id) && options.get(o.id)!.name !== o.name).map((o) => ({ from: options.get(o.id)!.name, to: o.name })),
+      ...inv.factors.filter((f) => factors.has(f.id) && factors.get(f.id)!.name !== f.name).map((f) => ({ from: factors.get(f.id)!.name, to: f.name })),
+    ],
     reweighted: organizerWeights ? inv.factors.filter((f) => factors.has(f.id) && factors.get(f.id)!.weight !== f.weight).length : 0,
     rules:
       s.mode !== n.mode ||
@@ -84,4 +87,4 @@ export function inviteChanges(d: Decision, invite: Invite): InviteChanges {
 }
 
 export const hasChanges = (c: InviteChanges) =>
-  c.addedOptions.length + c.addedFactors.length + c.removedOptions.length + c.removedFactors.length + c.renamed + c.reweighted > 0 || c.rules;
+  c.addedOptions.length + c.addedFactors.length + c.removedOptions.length + c.removedFactors.length + c.renamed.length + c.reweighted > 0 || c.rules;

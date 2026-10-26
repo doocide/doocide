@@ -10,7 +10,7 @@ import { Cards, Setup } from './Cards';
 import { CompareCodes, useShortCode } from './codes';
 import { DetailDialog } from './DetailDialog';
 import { abstainedOptions } from '../format/share';
-import { ballotSealed, confirmOrganizer, scoringLocked, setRows, setTitle, structureLocked, tidyNames, weightsLocked, withoutAbstained, type Edit, type Target } from './edit';
+import { ballotSealed, confirmOrganizer, countAside, discardSetAside, scoringLocked, setRows, setTitle, structureLocked, tidyNames, weightsLocked, withoutAbstained, type Edit, type Target } from './edit';
 import { downloadText, safeFileName } from './files';
 import { decisionTitle, optionName } from './labels';
 import { DescriptionText } from './Clamp';
@@ -23,7 +23,7 @@ import { ResultsPanel } from './ResultsPanel';
 import { SettingsDialog } from './SettingsDialog';
 import { SummaryDialog } from './SummaryDialog';
 import { ShareDialog } from './ShareDialog';
-import { Icon, Menu, Segmented, useMediaQuery } from './ui';
+import { Icon, Menu, Segmented, useConfirm, useMediaQuery } from './ui';
 
 /** Where a preview came from: a link, a file, or one of the app's own templates. */
 export type IncomingSource = 'link' | 'file' | 'builtin';
@@ -77,6 +77,29 @@ export interface CarryProps {
   onUndo: () => void;
   onDeleteSource: () => void;
   onCloseDone: () => void;
+}
+
+/**
+ * Participant: what a newer invite set aside (scores and notes for removed options or factors). It stays
+ * on this device, comes back if the organizer restores the item, and goes only when they discard it.
+ */
+function SetAsideNote({ d, onEdit }: { d: Decision; onEdit: (e: Edit) => void }) {
+  const ask = useConfirm();
+  const count = countAside(d.group?.setAside);
+  if (!count) return null;
+  return (
+    <p className="callout small set-aside">
+      {t('setAside.text', { count })}{' '}
+      <button
+        className="link-button small"
+        onClick={async () => {
+          if (await ask({ title: t('setAside.discard'), message: t('setAside.confirm'), confirmLabel: t('setAside.discard'), danger: true })) onEdit(discardSetAside);
+        }}
+      >
+        {t('setAside.discard')}
+      </button>
+    </p>
+  );
 }
 
 /**
@@ -159,7 +182,7 @@ function InviteChangeList({ c }: { c: InviteChanges }) {
       {c.addedFactors.length > 0 && <ChangeLine label={t('incoming.addedFactors', { count: c.addedFactors.length })} names={c.addedFactors} />}
       {c.removedOptions.length > 0 && <ChangeLine label={t('incoming.removedOptions', { count: c.removedOptions.length })} names={c.removedOptions} />}
       {c.removedFactors.length > 0 && <ChangeLine label={t('incoming.removedFactors', { count: c.removedFactors.length })} names={c.removedFactors} />}
-      {c.renamed > 0 && <ChangeLine label={t('incoming.renamed', { count: c.renamed })} names={[]} />}
+      {c.renamed.length > 0 && <ChangeLine label={t('incoming.renamed', { count: c.renamed.length })} names={c.renamed.map((r) => `${r.from} → ${r.to}`)} />}
       {c.reweighted > 0 && <ChangeLine label={t('incoming.reweighted', { count: c.reweighted })} names={[]} />}
       {c.rules && <ChangeLine label={t('incoming.rulesChanged')} names={[]} />}
     </ul>
@@ -192,6 +215,7 @@ function IncomingBanner({ incoming, title }: { incoming: Incoming; title: string
           <>
             <p className="small">{t('incoming.newerInvite')}</p>
             <InviteChangeList c={invite.changes} />
+            {invite.changes.renamed.length > 0 && <p className="small">{t('incoming.renamedCheck')}</p>}
           </>
         )}
       </div>
@@ -442,6 +466,7 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
       {!readOnly && role === 'participant' && (
         <ParticipantBar d={d} onSend={() => setDialog('share')} onEdit={onEdit} onCheckUpdates={async () => onCheckUpdates?.()} />
       )}
+      {!readOnly && role === 'participant' && <SetAsideNote d={d} onEdit={onEdit} />}
       {!readOnly && carry && <CarryCallout carry={carry} onOpen={openCarry} />}
 
       <div className="modebar">

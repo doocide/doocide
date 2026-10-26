@@ -6,7 +6,7 @@ import { newId } from '../format/ids';
 import { LIMITS } from '../format/limits';
 import { checkLink, cleanText } from '../format/sanitize';
 import { signatureAllows } from '../engine/ballots';
-import type { Decision, GroupResult, GroupSettings, Invite, Kdf, Note, ReceivedBallot, Score, SelectionSummary, Settings, StoredBallot, Visibility } from '../format/types';
+import type { Decision, GroupResult, GroupSettings, Invite, Kdf, Note, ReceivedBallot, Score, SelectionSummary, SetAside, Settings, StoredBallot, Visibility } from '../format/types';
 import { WEIGHT_MAX, WEIGHT_MIN } from '../format/types';
 import { cleanFolderResults, matchBallot } from '../format/validate';
 
@@ -446,6 +446,9 @@ export const setIncludeOwn = (includeOwn: boolean): Edit => (d) =>
  * follow the invite; their own scores and notes stay wherever the cells still exist. Anonymity stays
  * as it was when they joined: their ballots were made under that promise.
  */
+/** How much is set aside. */
+export const countAside = (a: SetAside | undefined) => (a ? a.scores.length + a.pugh.length + a.notes.length : 0);
+
 export const refreshFromInvite = (invite: Invite, signed: boolean): Edit => (d) => {
   const g = d.group;
   if (g?.role !== 'participant' || g.sourceId !== invite.decision.id) return d;
@@ -458,10 +461,30 @@ export const refreshFromInvite = (invite: Invite, signed: boolean): Edit => (d) 
   const factorIds = new Set(inv.factors.map((f) => f.id));
   const steps = inv.settings.pughSteps;
   const keep = (s: Score) => optionIds.has(s.optionId) && factorIds.has(s.factorId);
+  const fits = (n: Note) => (!n.optionId || optionIds.has(n.optionId)) && (!n.factorId || factorIds.has(n.factorId));
+  const rates = (s: Score) => keep(s) && s.optionId !== inv.settings.baselineId;
+  // Nothing is dropped: what the invite no longer has is set aside, and what was set aside before
+  // comes back where its option and factor exist again (into empty cells only).
+  const cell = (s: Score) => `${s.optionId} ${s.factorId}`;
+  const withAside = (mine: Score[], aside: Score[] = []) => {
+    const have = new Set(mine.map(cell));
+    return [...mine, ...aside.filter((s) => !have.has(cell(s)))];
+  };
+  const allScores = withAside(d.scores, g.setAside?.scores);
+  const allPugh = withAside(d.pugh, g.setAside?.pugh);
+  const noteIds = new Set(d.notes.map((n) => n.id));
+  const allNotes = [...d.notes, ...(g.setAside?.notes ?? []).filter((n) => !noteIds.has(n.id))];
+  const aside = {
+    scores: allScores.filter((s) => !keep(s)),
+    pugh: allPugh.filter((s) => !rates(s)),
+    notes: allNotes.filter((n) => !fits(n)),
+  };
+  const asideCount = aside.scores.length + aside.pugh.length + aside.notes.length;
+  const setAside = asideCount > 0 ? { ...aside, at: asideCount > countAside(g.setAside) ? new Date().toISOString() : (g.setAside?.at ?? new Date().toISOString()) } : undefined;
   const ownWeight = new Map(d.factors.map((f) => [f.id, f.weight]));
   const everyone = invite.settings.weights === 'everyone';
   const { description: _description, group: _group, ...rest } = d;
-  const { result: oldResult, resultsAt: oldAt, abstain: oldAbstain, ...kept } = g;
+  const { result: oldResult, resultsAt: oldAt, abstain: oldAbstain, setAside: _oldAside, ...kept } = g;
   // Abstentions only for options the invite still has, and never for its baseline.
   const abstain = (oldAbstain ?? []).filter((id) => optionIds.has(id) && !(inv.settings.mode === 'pugh' && id === inv.settings.baselineId));
   // Results go with whichever is newer: the ones in this invite, or the ones the copy already shows.
@@ -477,11 +500,9 @@ export const refreshFromInvite = (invite: Invite, signed: boolean): Edit => (d) 
     options: inv.options,
     factors: inv.factors.map((f) => (everyone && ownWeight.has(f.id) ? { ...f, weight: ownWeight.get(f.id)! } : f)),
     facts: inv.facts,
-    scores: d.scores.filter(keep).map((s) => ({ ...s, value: Math.min(inv.settings.scaleMax, s.value) })),
-    pugh: d.pugh
-      .filter((s) => keep(s) && s.optionId !== inv.settings.baselineId)
-      .map((s) => ({ ...s, value: Math.max(-steps, Math.min(steps, s.value)) })),
-    notes: d.notes.filter((n) => (!n.optionId || optionIds.has(n.optionId)) && (!n.factorId || factorIds.has(n.factorId))),
+    scores: allScores.filter(keep).map((s) => ({ ...s, value: Math.min(inv.settings.scaleMax, s.value) })),
+    pugh: allPugh.filter(rates).map((s) => ({ ...s, value: Math.max(-steps, Math.min(steps, s.value)) })),
+    notes: allNotes.filter(fits),
     group: {
       ...kept,
       inviteVersion: inv.updatedAt,
@@ -489,6 +510,7 @@ export const refreshFromInvite = (invite: Invite, signed: boolean): Edit => (d) 
       ...(result && { result }),
       ...(result && resultsAt && { resultsAt }),
       ...(abstain.length > 0 && { abstain }),
+      ...(setAside && { setAside }),
       ...(!g.organizerKey && signed && invite.key && { organizerKey: invite.key }),
       ...(signed && invite.sealKey && { organizerSealKey: invite.sealKey }),
     },
@@ -499,8 +521,20 @@ export const refreshFromInvite = (invite: Invite, signed: boolean): Edit => (d) 
  * Organizer: an invite went out showing this shape (see invites.ts). Bookkeeping, not a change to the
  * decision, so the last-changed time stays as it is.
  */
-export const markInvited = (shape: string): Edit => (d) =>
-  d.group?.role === 'organizer' ? { ...d, group: { ...d.group, lastInviteAt: new Date().toISOString(), lastInviteShape: shape } } : d;
+export const markInvited = (shape: string): Edit => (d) => {
+  if (d.group?.role !== 'organizer') return d;
+  const now = new Date().toISOString();
+  // An invite showing a changed decision: ballots made before it were scored on an earlier version.
+  const changed = d.group.lastInviteShape !== undefined && d.group.lastInviteShape !== shape;
+  return { ...d, group: { ...d.group, lastInviteAt: now, lastInviteShape: shape, ...(changed && { shapeChangedAt: now }) } };
+};
+
+/** Participant: lets go of what a newer invite set aside. */
+export const discardSetAside: Edit = (d) => {
+  if (d.group?.role !== 'participant' || !d.group.setAside) return d;
+  const { setAside: _setAside, ...group } = d.group;
+  return touch({ ...d, group });
+};
 
 /** A participant sends their ballot (again): the revision goes up, so it replaces the one sent before. */
 export const markSent: Edit = (d) =>

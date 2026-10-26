@@ -204,6 +204,15 @@ export interface StoredBallot extends Ballot {
   signed?: boolean;
 }
 
+/** What a newer invite took away from a participant's copy, kept aside rather than lost. */
+export interface SetAside {
+  scores: Score[];
+  pugh: Score[];
+  notes: Note[];
+  /** When it was last set aside. */
+  at: string;
+}
+
 export interface Group {
   role: 'organizer' | 'participant';
   settings: GroupSettings;
@@ -243,6 +252,13 @@ export interface Group {
   voterId?: string;
   /** Participant: how many times the ballot was sent. */
   revision?: number;
+  /**
+   * Participant: scores, ratings and notes for options or factors a newer invite removed. Kept on this
+   * device and never sent; they come back if the organizer brings the item back.
+   */
+  setAside?: SetAside;
+  /** Organizer: when an invite last went out showing a changed decision. Ballots made before it were scored on an earlier version. */
+  shapeChangedAt?: string;
   sentAt?: string;
   /** Participant: the organizer's name from the invite (named groups only, not verified). */
   organizerName?: string;
