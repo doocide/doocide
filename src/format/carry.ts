@@ -63,8 +63,18 @@ export function reworded(a: string, b: string): boolean {
   return 1 - levenshtein(x, y) / Math.max(x.length, y.length) >= 0.8;
 }
 
-/** Which old item carries into which new one, as suggested before the person decides. One new item takes at most one old one. */
-export function suggestMatches(from: readonly Item[], to: readonly Item[]): Match[] {
+/**
+ * Whether the new version's declarations (`was`) speak about this source: it's one the new version says
+ * it replaces, or its origin is unknown (saved before Doocide recorded where decisions come from). Never
+ * for a decision known to come from another file: ids like "o01" are reused across unrelated decisions.
+ */
+export const declarationsApply = (source: Decision, target: Decision): boolean => !source.origin || Boolean(target.replaces?.includes(source.origin.id));
+
+/**
+ * Which old item carries into which new one, as suggested before the person decides. One new item takes
+ * at most one old one. `declared`: follow the new items' `was` (see declarationsApply).
+ */
+export function suggestMatches(from: readonly Item[], to: readonly Item[], declared = true): Match[] {
   const matches = new Map<string, Match>(from.map((f) => [f.id, { from: f.id, to: null }]));
   const taken = new Set<string>();
   const assign = (fromId: string, toId: string, reason: MatchReason) => {
@@ -74,7 +84,7 @@ export function suggestMatches(from: readonly Item[], to: readonly Item[]): Matc
   const open = (fromId: string) => matches.get(fromId)?.to === null;
 
   // 1. Declared by whoever made the new version.
-  for (const t of to) {
+  for (const t of declared ? to : []) {
     const old = (t.was ?? []).find((id) => open(id));
     if (old && !taken.has(t.id)) assign(old, t.id, 'declared');
   }

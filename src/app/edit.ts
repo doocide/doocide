@@ -1,6 +1,7 @@
 // Pure edits on a decision. Each returns a new decision with updatedAt bumped, or the same decision
 // when the edit isn't allowed (a participant changing the organizer's structure, for example).
 
+import { carryScores, type CarryChoice } from '../format/carry';
 import { newId } from '../format/ids';
 import { LIMITS } from '../format/limits';
 import { checkLink, cleanText } from '../format/sanitize';
@@ -520,3 +521,16 @@ function move<T extends { id: string }>(items: T[], id: string, by: -1 | 1): T[]
   [out[i], out[j]] = [out[j]!, out[i]!];
   return out;
 }
+
+/**
+ * Copies another of this person's decisions' scores into this one, as they chose (src/format/carry.ts):
+ * only empty cells, and the other decision isn't changed. Remembers where they came from, once per source.
+ */
+export const carryFrom =
+  (source: Decision, choice: CarryChoice): Edit =>
+  (d) => {
+    if (source.id === d.id) return d;
+    const { decision } = carryScores(source, d, choice, newId);
+    const carriedFrom = [...(d.carriedFrom ?? []).filter((c) => c.id !== source.id), { id: source.id, at: new Date().toISOString() }].slice(-LIMITS.carried);
+    return touch({ ...decision, carriedFrom });
+  };

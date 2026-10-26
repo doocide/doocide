@@ -8,7 +8,8 @@ import { FormatError, parseAnyEnvelopeText, parseEnvelopeText, parseIncomingText
 import { getLang, t, useLang } from '../i18n';
 import { BallotReview } from './BallotReview';
 import { DecisionView, type IncomingSource } from './DecisionView';
-import { addBallots, applyFolderResults, isNewerResult, refreshFromInvite, type Edit } from './edit';
+import { addBallots, applyFolderResults, carryFrom, isNewerResult, refreshFromInvite, type Edit } from './edit';
+import { earlierVersions } from '../format/carry';
 import { FILE_EXTENSION, pickFileText, pickFilesText, readFileText, readFilesText } from './files';
 import { canUseFolders, connectFolder, forgetFolder, inviteFileName, onOpenedFiles, pickFolderBallots, readBallots, readNamed, rememberedFolder, resultsFileName } from './folder';
 import { ballotsFromTexts, findOrganizer, readUpdate, unlockUpdate, type Update } from './groupFiles';
@@ -76,6 +77,10 @@ export function App() {
   const [backups, setBackups] = useState(getBackups);
   /** A participant's results file is locked, and this device doesn't have its key yet. */
   const [unlocking, setUnlocking] = useState<{ id: string; box: PassphraseEnvelope } | null>(null);
+  /** Scores just carried into a decision: enough to undo it while that decision hasn't changed since. */
+  const [carried, setCarried] = useState<{ targetId: string; sourceId: string; title: string; count: number; before: Decision; after?: Decision } | null>(null);
+  /** Decisions whose "carry your scores over" suggestion was set aside, for this visit. */
+  const [notNow, setNotNow] = useState<ReadonlySet<string>>(new Set());
   const pending = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   const commit = useCallback((next: Map<string, Decision>) => {
@@ -293,12 +298,13 @@ export function App() {
     [commit, persist],
   );
 
+  /** Deletes a decision after asking. `leave`: go back to the library (not when deleting another decision from a decision's page). */
   const remove = useCallback(
-    async (id: string) => {
+    async (id: string, { leave = true, message }: { leave?: boolean; message?: string } = {}): Promise<boolean> => {
       const d = decisionsRef.current.get(id);
-      if (!d) return;
-      const ok = await ask({ title: t('decision.delete'), message: t('library.confirmDelete', { title: decisionTitle(d) }), confirmLabel: t('decision.delete'), danger: true });
-      if (!ok) return;
+      if (!d) return false;
+      const ok = await ask({ title: t('decision.delete'), message: message ?? t('library.confirmDelete', { title: decisionTitle(d) }), confirmLabel: t('decision.delete'), danger: true });
+      if (!ok) return false;
       clearTimeout(pending.current.get(id));
       const next = new Map(decisionsRef.current);
       next.delete(id);
@@ -308,7 +314,8 @@ export function App() {
       await forgetFolder(id);
       forgetBackup(id);
       setBackups(getBackups());
-      go({ name: 'library' }, true);
+      if (leave) go({ name: 'library' }, true);
+      return true;
     },
     [commit, go, ask],
   );
@@ -337,6 +344,42 @@ export function App() {
     const { ballots, skipped } = await ballotsFromTexts(d, read.texts);
     if (ballots.length === 0) return toast(t('review.noneFound'));
     go({ name: 'review', decisionId: d.id, ballots, skipped: skipped + read.failed });
+  };
+
+  /**
+   * Carrying scores into a decision from another of this person's decisions. While it has no scores
+   * yet, a likely earlier version is suggested; right after carrying, Undo applies until it changes again.
+   */
+  const carryProps = (current: Decision) => {
+    const others = [...decisions.values()].filter((x) => x.id !== current.id);
+    const unscored = current.scores.length + current.pugh.length === 0 && !current.carriedFrom?.length;
+    const earlier = unscored && !notNow.has(current.id) ? earlierVersions(current, others)[0] : undefined;
+    const suggested = earlier && decisions.get(earlier.id);
+    const here = carried?.targetId === current.id ? carried : null;
+    return {
+      others,
+      ...(earlier && suggested && { suggested: { decision: suggested, why: earlier.why } }),
+      ...(here && {
+        done: { ...(decisions.get(here.sourceId) && { source: decisions.get(here.sourceId)! }), title: here.title, count: here.count, canUndo: current === here.after },
+      }),
+      onCarry: (source: Decision, choice: Parameters<typeof carryFrom>[1], count: number) => {
+        const after = edit(current.id, carryFrom(source, choice));
+        setCarried({ targetId: current.id, sourceId: source.id, title: decisionTitle(source), count, before: current, ...(after && { after }) });
+      },
+      onDismiss: () => setNotNow((ids) => new Set(ids).add(current.id)),
+      onUndo: () => {
+        if (!here) return;
+        edit(current.id, () => here.before);
+        setCarried(null);
+        toast(t('carry.undone'));
+      },
+      onDeleteSource: async () => {
+        if (!here) return;
+        const message = t('carry.confirmDelete', { title: here.title, newer: decisionTitle(current) });
+        if (await remove(here.sourceId, { leave: false, message })) setCarried(null);
+      },
+      onCloseDone: () => setCarried(null),
+    };
   };
 
   /** The organizer picks several ballot files at once. */
@@ -653,6 +696,7 @@ export function App() {
         onOpenBallots={() => openBallots(current)}
         onCollectBallots={() => collectBallots(current)}
         onCheckUpdates={() => checkUpdates(current.id)}
+        carry={carryProps(current)}
       />
       </>
     );

@@ -726,6 +726,95 @@ a:focus-visible {
   background: var(--bar);
 }
 
+/* An earlier version, on its library card: its scores were carried into another decision. */
+.dc-carried {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Carrying scores over (CarryDialog.tsx): each old option or factor, and where it goes. */
+.carry-section h3 {
+  margin: 14px 0 6px;
+  font-size: 15px;
+}
+
+.carry-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.carry-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 40vh;
+  overflow: auto;
+}
+
+.carry-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.2fr);
+  align-items: center;
+  gap: 8px;
+}
+
+/* Where it goes, and under it why (or what to check). */
+.carry-to {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+}
+
+.carry-from {
+  overflow-wrap: anywhere;
+}
+
+.carry-to select {
+  width: 100%;
+  min-width: 0;
+}
+
+.carry-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 12px 0 4px;
+}
+
+.carry-summary {
+  margin: 8px 0;
+  padding-inline-start: 18px;
+  color: var(--muted);
+}
+
+.carry-callout p {
+  margin: 0 0 8px;
+}
+
+@media (max-width: 760px) {
+  .carry-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .carry-row .icon {
+    display: none;
+  }
+
+  .carry-to {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
 /* The app's version, beside About in the footer. */
 .version-tag {
   color: var(--muted);

@@ -1,16 +1,18 @@
 import { useMemo, useState } from 'react';
 import { analyze, cellKey, computeResults, groupView, groupVoters } from '../engine';
 import { toCSV } from '../format/table';
+import type { CarryChoice, EarlierWhy } from '../format/carry';
 import type { Decision, GroupSettings, Kind } from '../format/types';
 import { formatDate, t, useLang } from '../i18n';
 import { BallotsPanel, ballotLabel } from './BallotsPanel';
+import { CarryDialog } from './CarryDialog';
 import { Cards, Setup } from './Cards';
 import { CompareCodes, useShortCode } from './codes';
 import { DetailDialog } from './DetailDialog';
 import { abstainedOptions } from '../format/share';
 import { ballotSealed, confirmOrganizer, scoringLocked, setRows, setTitle, structureLocked, tidyNames, weightsLocked, withoutAbstained, type Edit, type Target } from './edit';
 import { downloadText, safeFileName } from './files';
-import { optionName } from './labels';
+import { decisionTitle, optionName } from './labels';
 import { DescriptionText } from './Clamp';
 import { PrivacyBadge } from './PrivacyBadge';
 import { canUseFolders, resultsFileName } from './folder';
@@ -59,6 +61,68 @@ interface Props {
   onCollectBallots?: () => void;
   /** Participant: look for newer group results (and a newer invite) in the shared folder or a picked file. */
   onCheckUpdates?: () => Promise<void>;
+  /** Carrying scores over from another of this person's decisions, usually an earlier version. Saved decisions only. */
+  carry?: CarryProps;
+}
+
+export interface CarryProps {
+  /** This person's other decisions. */
+  others: Decision[];
+  /** A likely earlier version, offered while this decision has no scores yet. */
+  suggested?: { decision: Decision; why: EarlierWhy };
+  /** Just carried: from where and how many. Undo applies until the decision changes again. */
+  done?: { source?: Decision; title: string; count: number; canUndo: boolean };
+  onCarry: (source: Decision, choice: CarryChoice, count: number) => void;
+  onDismiss: () => void;
+  onUndo: () => void;
+  onDeleteSource: () => void;
+  onCloseDone: () => void;
+}
+
+/**
+ * Offers to carry scores over from a likely earlier version, or says what was just carried, with
+ * Undo, and the choice to delete the earlier version now that its scores are here.
+ */
+function CarryCallout({ carry, onOpen }: { carry: CarryProps; onOpen: (sourceId?: string) => void }) {
+  const { done, suggested } = carry;
+  if (done) {
+    return (
+      <div className="callout carry-callout" role="status">
+        <p>{t('carry.done', { count: done.count, title: done.title })}</p>
+        <div className="actions start">
+          {done.canUndo && (
+            <button className="button" onClick={carry.onUndo}>
+              {t('carry.undo')}
+            </button>
+          )}
+          {done.source && (
+            <button className="button danger" onClick={carry.onDeleteSource}>
+              <Icon name="trash" size={16} />
+              {t('carry.deleteOld', { title: done.title })}
+            </button>
+          )}
+          <button className="button" onClick={carry.onCloseDone}>
+            {t('common.close')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+  if (!suggested) return null;
+  const title = decisionTitle(suggested.decision);
+  return (
+    <div className="callout carry-callout">
+      <p>{suggested.why === 'overlap' ? t('carry.suggestSimilar', { title }) : t('carry.suggestNewer', { title })}</p>
+      <div className="actions start">
+        <button className="button" onClick={carry.onDismiss}>
+          {t('carry.notNow')}
+        </button>
+        <button className="button primary" onClick={() => onOpen(suggested.decision.id)}>
+          {t('carry.suggestButton')}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /** A name someone else typed, kept apart from the app's own words and marked as unchecked until codes were compared. */
@@ -233,7 +297,7 @@ function ParticipantBar({ d, onSend, onEdit, onCheckUpdates }: { d: Decision; on
   );
 }
 
-export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicate, onDelete, onOpenBallots, onCollectBallots, onCheckUpdates }: Props) {
+export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicate, onDelete, onOpenBallots, onCollectBallots, onCheckUpdates, carry }: Props) {
   const uiLang = useLang();
   const isPhone = useMediaQuery('(max-width: 760px)');
   const readOnly = Boolean(incoming);
@@ -259,7 +323,12 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
   const abstainedNames = d.options.filter((o) => skip.has(o.id)).map((o) => optionName(d, o, uiLang));
   const [tab, setTab] = useState<'score' | 'results' | 'setup'>(d.options.length && d.factors.length ? 'score' : 'setup');
   const [detail, setDetail] = useState<Target | null>(null);
-  const [dialog, setDialog] = useState<null | 'share' | 'invite' | 'settings' | 'summary'>(null);
+  const [dialog, setDialog] = useState<null | 'share' | 'invite' | 'settings' | 'summary' | 'carry'>(null);
+  const [carrySource, setCarrySource] = useState<string | undefined>();
+  const openCarry = (sourceId?: string) => {
+    setCarrySource(sourceId);
+    setDialog('carry');
+  };
   const pugh = d.settings.mode === 'pugh';
   const lock = { structure: structureLocked(d), weights: weightsLocked(d) };
 
@@ -360,6 +429,7 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
                 { label: t('ballots.open'), icon: 'file', onSelect: () => onOpenBallots?.(), hidden: role !== 'organizer' },
                 { label: t('decision.exportCsv'), icon: 'table', onSelect: exportCsv },
                 { label: t('decision.backup'), icon: 'download', onSelect: onBackup },
+                { label: t('carry.menu'), icon: 'refresh', onSelect: () => openCarry(), hidden: !carry },
                 { label: t('decision.duplicate'), icon: 'file', onSelect: onDuplicate },
                 { label: t('decision.delete'), icon: 'trash', onSelect: onDelete, danger: true },
               ]}
@@ -372,6 +442,7 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
       {!readOnly && role === 'participant' && (
         <ParticipantBar d={d} onSend={() => setDialog('share')} onEdit={onEdit} onCheckUpdates={async () => onCheckUpdates?.()} />
       )}
+      {!readOnly && carry && <CarryCallout carry={carry} onOpen={openCarry} />}
 
       <div className="modebar">
         <span>{modeLine}</span>
@@ -467,6 +538,19 @@ export function DecisionView({ d, incoming, onEdit, onBack, onBackup, onDuplicat
       )}
       {dialog === 'settings' && <SettingsDialog d={d} uiLang={uiLang} onEdit={onEdit} onClose={() => setDialog(null)} />}
       {dialog === 'summary' && <SummaryDialog d={d} onEdit={onEdit} onClose={() => setDialog(null)} />}
+      {dialog === 'carry' && carry && (
+        <CarryDialog
+          target={d}
+          others={carry.others}
+          uiLang={uiLang}
+          {...(carrySource && { initialSourceId: carrySource })}
+          onCarry={(source, choice, count) => {
+            carry.onCarry(source, choice, count);
+            setDialog(null);
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
     </div>
   );
 }

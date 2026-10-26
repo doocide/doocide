@@ -107,6 +107,13 @@ export function Library({
 
   const notBackedUp = decisions.filter((d) => backupStatus(d.updatedAt, backups[d.id]) !== 'current').length;
 
+  /** Decisions whose scores were carried into another: an earlier version, kept as it was until its owner deletes it. */
+  const carriedInto = useMemo(() => {
+    const out = new Map<string, Decision>();
+    for (const d of decisions) for (const c of d.carriedFrom ?? []) if (!out.has(c.id) || out.get(c.id)!.updatedAt < d.updatedAt) out.set(c.id, d);
+    return out;
+  }, [decisions]);
+
   /** The second line of a card: the best option, or where a participant's ballot stands. */
   const bestLine = (d: Decision, best: string | null) => {
     if (d.group?.role === 'participant') return d.group.sentAt ? t('library.ballotSent', { date: formatDate(d.group.sentAt) }) : t('library.ballotNotSent');
@@ -190,6 +197,11 @@ export function Library({
                     <span className="dc-best" dir="auto">
                       {bestLine(d, best)}
                     </span>
+                    {carriedInto.has(d.id) && (
+                      <span className="dc-carried">
+                        <Icon name="refresh" size={14} /> {t('carry.carriedInto', { title: decisionTitle(carriedInto.get(d.id)!) })}
+                      </span>
+                    )}
                     <span className="dc-meta">
                       {t('library.counts', { options: d.options.length, factors: d.factors.length })} ·{' '}
                       {d.group?.role === 'organizer' && <>{t('library.ballots', { count: d.group.ballots.length })} · </>}

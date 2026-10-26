@@ -3,7 +3,8 @@
 // empty cells are filled, and the source is never changed, so nothing is lost.
 
 import { describe, expect, it } from 'vitest';
-import { carryScores, earlierVersions, looseName, reworded, suggestMatches, type CarryChoice } from '../src/format/carry';
+import { carryFrom } from '../src/app/edit';
+import { carryScores, declarationsApply, earlierVersions, looseName, reworded, suggestMatches, type CarryChoice } from '../src/format/carry';
 import type { Decision, Factor, Option, Score } from '../src/format/types';
 import { sampleDecision } from './fixtures';
 
@@ -87,6 +88,17 @@ describe('suggested matches', () => {
       ['o02', 'o03', 'declared'],
       ['o03', 'o04', 'declared'],
     ]);
+  });
+
+  it('follows declarations only for the version they speak about', () => {
+    const declared = NEW_OPTIONS.map((o, i) => (i === 0 ? o : { ...o, name: `Plan ${i + 1}`, was: [`o0${i}`] }));
+    expect(suggestMatches(OLD_OPTIONS, declared, false).every((m) => m.to === null && m.flag === 'renamed')).toBe(true);
+    const target = { ...newVersion(), replaces: ['file-v1'] };
+    expect(declarationsApply({ ...oldVersion(), origin: { id: 'file-v1', updatedAt: '2026-10-01T00:00:00.000Z' } }, target)).toBe(true);
+    // Saved before Doocide recorded origins: the person picked it, and sees each match before confirming.
+    expect(declarationsApply(oldVersion(), target)).toBe(true);
+    // Known to come from another file, which happens to use the same ids.
+    expect(declarationsApply({ ...oldVersion(), origin: { id: 'other-file', updatedAt: '2026-10-01T00:00:00.000Z' } }, target)).toBe(false);
   });
 
   it('keeps a lightly reworded name on the same id, and says so', () => {
@@ -232,5 +244,19 @@ describe('finding earlier versions', () => {
 
   it('finds the real case’s earlier version by its factors, though nothing was declared', () => {
     expect(earlierVersions(newVersion(), [oldVersion()])).toEqual([{ id: 'local-old', why: 'overlap', overlap: 1 }]);
+  });
+});
+
+describe('the edit that carries', () => {
+  it('records where the scores came from, once per source, and never carries into itself', () => {
+    const from = oldVersion();
+    const to = newVersion();
+    const choice = choiceFrom(from, to);
+    const once = carryFrom(from, choice)(to);
+    expect(once.scores).toHaveLength(111);
+    expect(once.carriedFrom).toEqual([{ id: 'local-old', at: expect.any(String) }]);
+    expect(once.updatedAt).not.toBe(to.updatedAt);
+    expect(carryFrom(from, choice)(once).carriedFrom).toHaveLength(1);
+    expect(carryFrom(from, choice)(from)).toBe(from);
   });
 });
