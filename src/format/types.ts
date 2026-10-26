@@ -15,6 +15,11 @@ export interface Option {
   name: string;
   description?: string;
   l10n?: Translations;
+  /**
+   * The ids this option had in the earlier versions this decision replaces (see Decision.replaces), so
+   * scores can follow it. Declared by whoever made the new version. Never reuse an id for a different meaning.
+   */
+  was?: string[];
 }
 
 export interface Factor {
@@ -25,6 +30,8 @@ export interface Factor {
   /** What a low and a high score mean for this factor, so everyone scores the same way. */
   guide?: string;
   l10n?: Translations;
+  /** The ids this factor had in the earlier versions this decision replaces. See Option.was. */
+  was?: string[];
 }
 
 /** Evidence for one option on one factor, e.g. "4.3 inches, 480x800". Always shared. */
@@ -71,6 +78,22 @@ export interface Settings {
   rows?: 'factors' | 'options';
 }
 
+/**
+ * Where a decision saved from someone's file or link came from: that file's own id and last change.
+ * Device bookkeeping, never shared: it lets a newer version of the same file be recognized later.
+ */
+export interface Origin {
+  id: string;
+  updatedAt: string;
+}
+
+/** Scores carried into this decision from another of this person's decisions, usually an earlier version. Device bookkeeping, never shared. */
+export interface Carried {
+  /** The other decision's id on this device. */
+  id: string;
+  at: string;
+}
+
 export interface Decision {
   id: string;
   title: string;
@@ -92,6 +115,12 @@ export interface Decision {
   group?: Group;
   /** A snapshot of a group's combined results, as shared by its organizer. No individual ballots, no names. */
   groupResult?: GroupResult;
+  /** The ids of earlier versions this decision replaces, declared by whoever made it. See Option.was. */
+  replaces?: string[];
+  /** Device only: the file or link this decision was saved from. */
+  origin?: Origin;
+  /** Device only: decisions whose scores were carried into this one, oldest first. */
+  carriedFrom?: Carried[];
 }
 
 // Groups: an organizer invites people, each sends back a ballot, the organizer approves and merges them.

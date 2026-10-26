@@ -12,6 +12,7 @@ import {
   WEIGHT_MIN,
   type AnyEnvelope,
   type Ballot,
+  type Carried,
   type CellResult,
   type Decision,
   type DecisionKind,
@@ -27,6 +28,7 @@ import {
   type Kdf,
   type Note,
   type Option,
+  type Origin,
   type Score,
   type SelectionSummary,
   type Settings,
@@ -268,6 +270,16 @@ function cleanIdList(v: unknown, valid: Set<string> | null, skip?: string): stri
   for (const item of list(v, LIMITS.options, 'options')) {
     const id = refId(item, valid);
     if (id && id !== skip) out.add(id);
+  }
+  return [...out];
+}
+
+/** Earlier ids (`was`, `replaces`): well-formed, each once, never the item's own id. Too many fails the file. */
+function cleanEarlierIds(v: unknown, own?: string): string[] {
+  const out = new Set<string>();
+  for (const item of list(v, LIMITS.earlierIds, 'earlier ids')) {
+    const id = cleanId(item);
+    if (id && id !== own) out.add(id);
   }
   return [...out];
 }
@@ -669,11 +681,14 @@ export function validateDecision(raw: unknown, kind: DecisionKind): Decision {
     if (!isObj(item)) continue;
     const description = cleanText(get(item, 'description'), T.description, true);
     const l10n = cleanTranslations(get(item, 'l10n'));
+    const id = uniqueId(get(item, 'id'), optionIdsSeen);
+    const was = cleanEarlierIds(get(item, 'was'), id);
     options.push({
-      id: uniqueId(get(item, 'id'), optionIdsSeen),
+      id,
       name: cleanText(get(item, 'name'), T.name),
       ...(description && { description }),
       ...(l10n && { l10n }),
+      ...(was.length > 0 && { was }),
     });
   }
 
@@ -685,12 +700,15 @@ export function validateDecision(raw: unknown, kind: DecisionKind): Decision {
     const weight = typeof w === 'number' && Number.isFinite(w) ? Math.min(WEIGHT_MAX, Math.max(WEIGHT_MIN, Math.round(w))) : 3;
     const guide = cleanText(get(item, 'guide'), T.guide, true);
     const l10n = cleanTranslations(get(item, 'l10n'));
+    const id = uniqueId(get(item, 'id'), factorIdsSeen);
+    const was = cleanEarlierIds(get(item, 'was'), id);
     factors.push({
-      id: uniqueId(get(item, 'id'), factorIdsSeen),
+      id,
       name: cleanText(get(item, 'name'), T.name),
       weight,
       ...(guide && { guide }),
       ...(l10n && { l10n }),
+      ...(was.length > 0 && { was }),
     });
   }
 
@@ -723,9 +741,14 @@ export function validateDecision(raw: unknown, kind: DecisionKind): Decision {
   const groupResult = kind === 'template' ? undefined : cleanGroupResult(get(raw, 'groupResult'), optionIds, factorIds, settings);
 
   const id = get(raw, 'id');
+  const cleanedId = typeof id === 'string' && ID_PATTERN.test(id) ? id : newId();
   const description = cleanText(get(raw, 'description'), T.description, true);
+  const replaces = cleanEarlierIds(get(raw, 'replaces'), cleanedId);
+  // Where it came from and what was carried into it: this device's own bookkeeping, read back from its storage and backups only.
+  const origin = kind === 'backup' ? cleanOrigin(get(raw, 'origin')) : undefined;
+  const carriedFrom = kind === 'backup' ? cleanCarried(get(raw, 'carriedFrom')) : [];
   return {
-    id: typeof id === 'string' && ID_PATTERN.test(id) ? id : newId(),
+    id: cleanedId,
     title: cleanText(get(raw, 'title'), T.title),
     ...(description && { description }),
     lang: cleanLang(get(raw, 'lang')),
@@ -740,5 +763,26 @@ export function validateDecision(raw: unknown, kind: DecisionKind): Decision {
     notes,
     ...(group && { group }),
     ...(groupResult && { groupResult }),
+    ...(replaces.length > 0 && { replaces }),
+    ...(origin && { origin }),
+    ...(carriedFrom.length > 0 && { carriedFrom }),
   };
+}
+
+function cleanOrigin(v: unknown): Origin | undefined {
+  if (!isObj(v)) return undefined;
+  const id = cleanId(get(v, 'id'));
+  const updatedAt = cleanDate(get(v, 'updatedAt'), '');
+  return id && updatedAt ? { id, updatedAt } : undefined;
+}
+
+function cleanCarried(v: unknown): Carried[] {
+  const out: Carried[] = [];
+  for (const item of list(v, LIMITS.carried, 'carried')) {
+    if (!isObj(item)) continue;
+    const id = cleanId(get(item, 'id'));
+    const at = cleanDate(get(item, 'at'), '');
+    if (id && at) out.push({ id, at });
+  }
+  return out;
 }

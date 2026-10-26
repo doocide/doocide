@@ -20,6 +20,10 @@ export const LIMITS = {
   notes: 5_000,
   translations: 60,
   pastedTableChars: 500_000,
+  /** Earlier ids one option or factor may declare (`was`), and earlier versions one decision may replace. */
+  earlierIds: 20,
+  /** Decisions whose scores were carried into one decision. */
+  carried: 50,
   /** Approved ballots kept in one group decision. */
   ballots: 1_000,
   /** Highest re-send count a ballot may claim. */

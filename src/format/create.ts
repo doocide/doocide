@@ -20,13 +20,26 @@ export function emptyDecision(lang: string, title = ''): Decision {
 }
 
 /**
- * A new decision of your own, started from a template, someone else's share or a duplicate.
- * Group data never comes along, except when restoring your own backup.
+ * A new decision of your own, started from a file or link (someone's share, a template), your own
+ * backup, or a duplicate. Group data and this device's bookkeeping come along only from your own
+ * backup. Saved from a file or link, it remembers that file's id and last change (`origin`), so a
+ * newer version of the same file can be recognized later; a duplicate keeps its original's.
  */
-export function adopt(d: Decision, lang: string, restore = false): Decision {
+export function adopt(d: Decision, lang: string, how: 'file' | 'backup' | 'duplicate' = 'file'): Decision {
   const now = new Date().toISOString();
-  const { group, ...rest } = d;
-  return { ...rest, ...(restore && group && { group }), id: newId(), lang: d.lang || lang, createdAt: now, updatedAt: now };
+  const { group, origin, carriedFrom, ...rest } = d;
+  const restore = how === 'backup';
+  const from = how === 'file' ? { id: d.id, updatedAt: d.updatedAt } : origin;
+  return {
+    ...rest,
+    ...(restore && group && { group }),
+    ...(restore && carriedFrom && { carriedFrom }),
+    ...(from && { origin: from }),
+    id: newId(),
+    lang: d.lang || lang,
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 /**

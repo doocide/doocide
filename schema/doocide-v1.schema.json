@@ -69,6 +69,13 @@
   "definitions": {
     "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
     "date": { "type": "string", "maxLength": 40, "description": "ISO 8601 date and time." },
+    "earlierIds": {
+      "type": "array",
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": { "$ref": "#/definitions/id" },
+      "description": "Ids from earlier versions. Optional: files without them work as before."
+    },
     "publicKey": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,120}$", "description": "An ECDSA P-256 public key, raw, base64url." },
     "signature": {
       "type": "string",
@@ -130,7 +137,8 @@
               "id": { "$ref": "#/definitions/id" },
               "name": { "type": "string", "maxLength": 200 },
               "description": { "type": "string", "maxLength": 2000 },
-              "l10n": { "$ref": "#/definitions/translations" }
+              "l10n": { "$ref": "#/definitions/translations" },
+              "was": { "$ref": "#/definitions/earlierIds", "description": "The ids this option had in the earlier versions this decision replaces (see replaces), so people's scores follow it. Never reuse an id for a different meaning: give a new option a new id." }
             },
             "additionalProperties": false
           }
@@ -147,7 +155,8 @@
               "name": { "type": "string", "maxLength": 200 },
               "weight": { "type": "integer", "minimum": 1, "maximum": 5, "description": "1 least important, 3 important, 5 very important." },
               "guide": { "type": "string", "maxLength": 1000, "description": "What a low and a high score mean. Higher must always mean better." },
-              "l10n": { "$ref": "#/definitions/translations" }
+              "l10n": { "$ref": "#/definitions/translations" },
+              "was": { "$ref": "#/definitions/earlierIds", "description": "The ids this factor had in the earlier versions this decision replaces. See the option's was." }
             },
             "additionalProperties": false
           }
@@ -211,6 +220,28 @@
         "group": {
           "type": "object",
           "description": "Backups only: the owner's group data (their role, the group's rules, approved ballots). Never in a shared file or link."
+        },
+        "replaces": {
+          "$ref": "#/definitions/earlierIds",
+          "description": "The ids of earlier versions this decision replaces, so people who scored one can carry their scores over. Pair it with was on options and factors whose ids changed."
+        },
+        "origin": {
+          "type": "object",
+          "description": "Backups only: the file or link this decision was saved from (its id and last change), so a newer version can be recognized. Never in a shared file or link.",
+          "required": ["id", "updatedAt"],
+          "properties": { "id": { "$ref": "#/definitions/id" }, "updatedAt": { "$ref": "#/definitions/date" } },
+          "additionalProperties": false
+        },
+        "carriedFrom": {
+          "type": "array",
+          "maxItems": 50,
+          "description": "Backups only: the owner's other decisions whose scores were carried into this one. Never in a shared file or link.",
+          "items": {
+            "type": "object",
+            "required": ["id", "at"],
+            "properties": { "id": { "$ref": "#/definitions/id" }, "at": { "$ref": "#/definitions/date" } },
+            "additionalProperties": false
+          }
         }
       }
     },

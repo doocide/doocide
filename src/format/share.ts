@@ -21,10 +21,13 @@ export type ShareKind = Exclude<DecisionKind, 'backup'>;
 
 /**
  * A copy safe to give to others. Built field by field from the original, so a field added to
- * Decision later (like `group`) is left out until someone decides it is shareable.
+ * Decision later (like `group`) is left out until someone decides it is shareable. `versions`: also
+ * which earlier versions it replaces (`replaces`, `was`). Plain shares only: signed invites and results
+ * leave them out, since an older Doocide drops fields it doesn't know and the signature would fail.
  */
-export function shareableCopy(d: Decision, kind: ShareKind): Decision {
+export function shareableCopy(d: Decision, kind: ShareKind, versions = false): Decision {
   const template = kind === 'template';
+  const was = (ids: string[] | undefined) => (versions && ids?.length ? { was: [...ids] } : {});
   return {
     id: d.id,
     title: d.title,
@@ -33,17 +36,18 @@ export function shareableCopy(d: Decision, kind: ShareKind): Decision {
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
     settings: { ...d.settings },
-    options: d.options.map((o) => ({ ...o })),
-    factors: d.factors.map((f) => ({ ...f })),
+    options: d.options.map(({ was: ids, ...o }) => ({ ...o, ...was(ids) })),
+    factors: d.factors.map(({ was: ids, ...f }) => ({ ...f, ...was(ids) })),
     facts: d.facts.map((f) => ({ ...f })),
     scores: template ? [] : d.scores.map((s) => ({ ...s })),
     pugh: template ? [] : d.pugh.map((s) => ({ ...s })),
     notes: template ? [] : d.notes.filter((n) => n.visibility === 'shared').map((n) => ({ ...n })),
+    ...(versions && d.replaces?.length && { replaces: [...d.replaces] }),
   };
 }
 
 export function shareEnvelope(d: Decision, kind: ShareKind): Envelope {
-  return { doocide: FORMAT_VERSION, kind, enc: 'none', data: shareableCopy(d, kind) };
+  return { doocide: FORMAT_VERSION, kind, enc: 'none', data: shareableCopy(d, kind, true) };
 }
 
 /** The owner's own full copy, private notes and group data included. For saving to their own device only. */

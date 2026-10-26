@@ -611,7 +611,7 @@ export function App() {
           kind: env.kind,
           source,
           onSave: () => {
-            add(adopt(env.data, getLang(), env.kind === 'backup'));
+            add(adopt(env.data, getLang(), env.kind === 'backup' ? 'backup' : 'file'));
             toast(t('incoming.saved'));
           },
           onDiscard: () => go({ name: 'library' }, true),
@@ -648,7 +648,7 @@ export function App() {
         onEdit={(change) => edit(current.id, change)}
         onBack={() => go({ name: 'library' })}
         onBackup={() => backup(current.id)}
-        onDuplicate={() => add({ ...adopt(current, getLang()), title: t('decision.copyOf', { title: decisionTitle(current) }) })}
+        onDuplicate={() => add({ ...adopt(current, getLang(), 'duplicate'), title: t('decision.copyOf', { title: decisionTitle(current) }) })}
         onDelete={() => remove(current.id)}
         onOpenBallots={() => openBallots(current)}
         onCollectBallots={() => collectBallots(current)}
