@@ -65,7 +65,8 @@ jobs:
           ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
           export GIT_SSH_COMMAND="ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes"
           git clone --depth 1 git@github.com:doocide/doocide.github.io.git site
-          find site -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          # Replace the site with the new build, but keep the repo's own README.
+          find site -mindepth 1 -maxdepth 1 ! -name .git ! -name README.md -exec rm -rf {} +
           cp -R dist/. site/
           touch site/.nojekyll
           cd site
