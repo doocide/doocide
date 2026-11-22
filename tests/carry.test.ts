@@ -245,6 +245,13 @@ describe('finding earlier versions', () => {
   it('finds the real case’s earlier version by its factors, though nothing was declared', () => {
     expect(earlierVersions(newVersion(), [oldVersion()])).toEqual([{ id: 'local-old', why: 'overlap', overlap: 1 }]);
   });
+
+  it('recognizes an on-device decision, which has an id and no origin, when replaces lists that id', () => {
+    const onDevice = { ...oldVersion(), id: 'scored-here' };
+    expect(onDevice.origin).toBeUndefined();
+    const file = { ...newVersion(), replaces: ['scored-here'] };
+    expect(earlierVersions(file, [onDevice])).toEqual([{ id: 'scored-here', why: 'replaces', overlap: 1 }]);
+  });
 });
 
 describe('the edit that carries', () => {
