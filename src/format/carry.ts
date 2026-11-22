@@ -276,18 +276,21 @@ const hasScores = (d: Decision) => d.scores.length + d.pugh.length > 0;
 
 /**
  * This person's decisions that look like earlier versions of `target`, most likely first: one the
- * target declares it replaces, one saved from the same file, or one sharing at least half its factors.
- * Only decisions with scores to carry.
+ * target declares it replaces (that file's id, or this device's own id for a decision scored here),
+ * one saved from the same file, or one sharing at least half its factors. Only decisions with scores
+ * to carry.
  */
 export function earlierVersions(target: Decision, library: readonly Decision[]): Earlier[] {
   const ids = new Set(target.factors.map((f) => f.id));
   const names = new Set(target.factors.map((f) => looseName(f.name)));
+  const replaces = (id: string | undefined) => Boolean(id && target.replaces?.includes(id));
   const out: (Earlier & { at: string })[] = [];
   for (const d of library) {
     if (d.id === target.id || !hasScores(d)) continue;
     const overlap = target.factors.length ? d.factors.filter((f) => ids.has(f.id) || names.has(looseName(f.name))).length / target.factors.length : 0;
+    // A decision scored on this device has no origin: the id in its file is its own id.
     const why: EarlierWhy | null =
-      d.origin && target.replaces?.includes(d.origin.id)
+      replaces(d.origin?.id) || replaces(d.id)
         ? 'replaces'
         : d.origin && target.origin && d.origin.id === target.origin.id
           ? 'sameFile'
